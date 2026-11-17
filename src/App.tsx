@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
+import { BottomNav } from './components/BottomNav';
 import { Hero } from './components/Hero';
-import { VideoReelsSection } from './components/VideoReelsSection';
+import { AboutSection } from './components/AboutSection';
+import { SkillsSection } from './components/SkillsSection';
 import { PortfolioGrid } from './components/PortfolioGrid';
 import { ResumeSection } from './components/ResumeSection';
 import { TestimonialsSection } from './components/TestimonialsSection';
 import { ContactSection } from './components/ContactSection';
 import { Footer } from './components/Footer';
 import { ProjectLightbox } from './components/ProjectLightbox';
+import { ExpertiseDetailModal } from './components/ExpertiseDetailModal';
 import { AdminPortal } from './components/AdminPortal';
-import { Project, Inquiry, Testimonial, SkillItem, PortfolioStats } from './types';
+
+import { Project, Inquiry, Testimonial, SkillItem, PortfolioStats, ExpertiseItem } from './types';
 import {
   db,
   auth,
@@ -21,8 +25,10 @@ import {
   User,
   SEED_PROJECTS,
   SEED_SKILLS,
+  SEED_EXPERTISE,
   SEED_TESTIMONIALS,
 } from './lib/firebase';
+
 import {
   collection,
   getDocs,
@@ -46,6 +52,10 @@ export default function App() {
   const [skills, setSkills] = useState<SkillItem[]>(() =>
     SEED_SKILLS.map((s, index) => ({ id: `seed-${index}`, ...s } as SkillItem))
   );
+  const [expertise, setExpertise] = useState<ExpertiseItem[]>(() =>
+    SEED_EXPERTISE.map((e, index) => ({ id: `seed-exp-${index}`, ...e } as ExpertiseItem))
+  );
+
   const [stats, setStats] = useState<PortfolioStats | null>(() => {
     const computed = calculatePortfolioStats(SEED_PROJECTS as any);
     return {
@@ -62,8 +72,59 @@ export default function App() {
     SEED_TESTIMONIALS.map((t, index) => ({ id: `seed-test-${index}`, ...t } as Testimonial))
   );
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
+  const [selectedExpertiseModal, setSelectedExpertiseModal] = useState<ExpertiseItem | null>(null);
+  
+  // Persist Admin Portal state on page reload via localStorage & URL hash (#admin)
+  const [isAdminPortalOpen, setIsAdminPortalOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return (
+        window.location.hash === '#admin' ||
+        localStorage.getItem('studio_admin_portal_open') === 'true'
+      );
+    }
+    return false;
+  });
+
   const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser);
+
+  // Synchronize admin portal open state with URL hash and localStorage
+  useEffect(() => {
+    if (isAdminPortalOpen) {
+      try {
+        localStorage.setItem('studio_admin_portal_open', 'true');
+      } catch {}
+      if (window.location.hash !== '#admin') {
+        window.history.replaceState(null, '', '#admin');
+      }
+    } else {
+      try {
+        localStorage.removeItem('studio_admin_portal_open');
+      } catch {}
+      if (window.location.hash === '#admin') {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+    }
+  }, [isAdminPortalOpen]);
+
+  // Listen to hashchange events (back/forward navigation or manual URL typing)
+  useEffect(() => {
+    const onHashChange = () => {
+      if (window.location.hash === '#admin') {
+        setIsAdminPortalOpen(true);
+      }
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  // Helper for authenticated administrative API calls
+  const getAdminHeaders = () => {
+    const email = currentUser?.email || auth.currentUser?.email || '';
+    return {
+      'Content-Type': 'application/json',
+      'x-admin-email': email,
+    };
+  };
 
   const [likedIds, setLikedIds] = useState<Set<string | number>>(() => {
     try {
@@ -130,40 +191,92 @@ export default function App() {
       }
     }
 
-    // 3. Fetch Skills from Firestore
+    // 3. Fetch Skills from Firestore or Local SQLite
     try {
       const skillsCol = collection(db, 'skills');
       const skillsSnap = await getDocs(skillsCol);
       if (!skillsSnap.empty) {
         const sList = skillsSnap.docs.map((d) => {
           const raw = d.data() as Omit<SkillItem, 'id'>;
-          const seedMatch = SEED_SKILLS.find(
-            (seed) => seed.name.toLowerCase() === String(raw.name || '').toLowerCase()
-          );
           return {
             id: d.id,
             ...raw,
-            icon: raw.icon || seedMatch?.icon || getDefaultSkillIcon(raw.category || 'design'),
-            details: raw.details ?? seedMatch?.details ?? '',
+            icon: raw.icon || 'canva',
+            details: raw.details ?? '',
           } as SkillItem;
         });
         sList.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
         setSkills(sList);
       } else {
-        // Fallback to default skills
-        const fallbackSkills: SkillItem[] = SEED_SKILLS.map((s, index) => ({
-          id: `seed-${index}`,
-          ...s,
-        } as SkillItem));
-        setSkills(fallbackSkills);
+        const res = await fetch('/api/skills');
+        if (res.ok) {
+          const apiSkills = await res.json();
+          if (Array.isArray(apiSkills) && apiSkills.length > 0) {
+            setSkills(apiSkills);
+            return;
+          }
+        }
+        setSkills(SEED_SKILLS.map((s, index) => ({ id: `seed-${index}`, ...s } as SkillItem)));
       }
     } catch (err) {
-      const fallbackSkills: SkillItem[] = SEED_SKILLS.map((s, index) => ({
-        id: `seed-${index}`,
-        ...s,
-      } as SkillItem));
-      setSkills(fallbackSkills);
+      try {
+        const res = await fetch('/api/skills');
+        if (res.ok) {
+          const apiSkills = await res.json();
+          if (Array.isArray(apiSkills) && apiSkills.length > 0) {
+            setSkills(apiSkills);
+            return;
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      setSkills(SEED_SKILLS.map((s, index) => ({ id: `seed-${index}`, ...s } as SkillItem)));
     }
+
+    // 3.5 Fetch Skills & Expertise Domains from Firestore or Local SQLite
+    try {
+      const expCol = collection(db, 'expertise');
+      const expSnap = await getDocs(expCol);
+      if (!expSnap.empty) {
+        const eList = expSnap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as ExpertiseItem[];
+        eList.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+        setExpertise(eList);
+      } else {
+        const res = await fetch('/api/expertise');
+        if (res.ok) {
+          const apiExp = await res.json();
+          if (Array.isArray(apiExp) && apiExp.length > 0) {
+            setExpertise(apiExp);
+          } else {
+            setExpertise(SEED_EXPERTISE.map((e, index) => ({ id: `seed-exp-${index}`, ...e } as ExpertiseItem)));
+          }
+        } else {
+          setExpertise(SEED_EXPERTISE.map((e, index) => ({ id: `seed-exp-${index}`, ...e } as ExpertiseItem)));
+        }
+      }
+    } catch (err) {
+      try {
+        const res = await fetch('/api/expertise');
+        if (res.ok) {
+          const apiExp = await res.json();
+          if (Array.isArray(apiExp) && apiExp.length > 0) {
+            setExpertise(apiExp);
+          } else {
+            setExpertise(SEED_EXPERTISE.map((e, index) => ({ id: `seed-exp-${index}`, ...e } as ExpertiseItem)));
+          }
+        } else {
+          setExpertise(SEED_EXPERTISE.map((e, index) => ({ id: `seed-exp-${index}`, ...e } as ExpertiseItem)));
+        }
+      } catch (e) {
+        console.error(e);
+        setExpertise(SEED_EXPERTISE.map((e, index) => ({ id: `seed-exp-${index}`, ...e } as ExpertiseItem)));
+      }
+    }
+
 
     // 4. Fetch Testimonials from Firestore
     try {
@@ -200,14 +313,18 @@ export default function App() {
         );
         setInquiries(inqList);
       } else {
-        const res = await fetch('/api/inquiries');
+        const res = await fetch('/api/inquiries', {
+          headers: getAdminHeaders(),
+        });
         if (res.ok) setInquiries(await res.json());
       }
     } catch (err) {
-      fetch('/api/inquiries')
-        .then((r) => r.json())
+      fetch('/api/inquiries', {
+        headers: getAdminHeaders(),
+      })
+        .then((r) => (r.ok ? r.json() : []))
         .then((data) => setInquiries(data))
-        .catch(console.error);
+        .catch(() => {});
     }
 
     // 6. Fetch / Calculate Stats
@@ -349,7 +466,7 @@ export default function App() {
     }
     fetch(`/api/inquiries/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify({ status }),
     }).catch(console.error);
 
@@ -364,7 +481,10 @@ export default function App() {
     } catch (err) {
       console.warn(err);
     }
-    fetch(`/api/inquiries/${id}`, { method: 'DELETE' }).catch(console.error);
+    fetch(`/api/inquiries/${id}`, {
+      method: 'DELETE',
+      headers: getAdminHeaders(),
+    }).catch(console.error);
     setInquiries((prev) => prev.filter((inq) => inq.id !== id));
   };
 
@@ -391,7 +511,7 @@ export default function App() {
 
     fetch('/api/projects', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify(projectData),
     }).catch(console.error);
   };
@@ -406,6 +526,12 @@ export default function App() {
     setProjects((prev) =>
       prev.map((p) => (p.id === id ? { ...p, ...updatedData } : p))
     );
+
+    fetch(`/api/projects/${id}`, {
+      method: 'PUT',
+      headers: getAdminHeaders(),
+      body: JSON.stringify(updatedData),
+    }).catch(console.error);
   };
 
   const handleDeleteProject = async (id: string | number) => {
@@ -415,6 +541,11 @@ export default function App() {
       console.warn('Firestore delete project error:', err);
     }
     setProjects((prev) => prev.filter((p) => p.id !== id));
+
+    fetch(`/api/projects/${id}`, {
+      method: 'DELETE',
+      headers: getAdminHeaders(),
+    }).catch(console.error);
   };
 
   // ADMIN ACTIONS: Skills
@@ -432,10 +563,17 @@ export default function App() {
 
     try {
       await setDoc(doc(db, 'skills', docId), newSkill);
-      setSkills((prev) => [...prev, { id: docId, ...newSkill }]);
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `skills/${docId}`);
+      console.warn('Firestore skill add fallback:', err);
     }
+
+    fetch('/api/skills', {
+      method: 'POST',
+      headers: getAdminHeaders(),
+      body: JSON.stringify(newSkill),
+    }).catch(console.error);
+
+    setSkills((prev) => [...prev, { id: docId, ...newSkill }]);
   };
 
   const handleUpdateSkill = async (id: string | number, updatedSkill: Partial<SkillItem>) => {
@@ -454,22 +592,94 @@ export default function App() {
 
     try {
       await updateDoc(doc(db, 'skills', String(id)), merged.data);
-      setSkills((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, ...merged.data } : s))
-      );
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `skills/${String(id)}`);
+      console.warn('Firestore update skill fallback:', err);
     }
+
+    fetch(`/api/skills/${id}`, {
+      method: 'PUT',
+      headers: getAdminHeaders(),
+      body: JSON.stringify(merged.data),
+    }).catch(console.error);
+
+    setSkills((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, ...merged.data } : s))
+    );
   };
 
   const handleDeleteSkill = async (id: string | number) => {
     try {
       await deleteDoc(doc(db, 'skills', String(id)));
-      setSkills((prev) => prev.filter((s) => s.id !== id));
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `skills/${String(id)}`);
+      console.warn('Firestore delete skill fallback:', err);
     }
+
+    fetch(`/api/skills/${id}`, {
+      method: 'DELETE',
+      headers: getAdminHeaders(),
+    }).catch(console.error);
+
+    setSkills((prev) => prev.filter((s) => s.id !== id));
   };
+
+  // ADMIN ACTIONS: Expertise Domains
+  const handleAddExpertise = async (data: Omit<ExpertiseItem, 'id'>) => {
+    const docId = `expertise-${Date.now()}`;
+    const newExpertise: ExpertiseItem = {
+      id: docId,
+      ...data,
+      sort_order: data.sort_order || expertise.length + 1,
+      created_at: new Date().toISOString(),
+    };
+
+    try {
+      await setDoc(doc(db, 'expertise', docId), newExpertise);
+    } catch (err) {
+      console.warn('Firestore expertise add fallback:', err);
+    }
+
+    fetch('/api/expertise', {
+      method: 'POST',
+      headers: getAdminHeaders(),
+      body: JSON.stringify(newExpertise),
+    }).catch(console.error);
+
+    setExpertise((prev) => [...prev, newExpertise]);
+  };
+
+  const handleUpdateExpertise = async (id: string | number, updatedData: Partial<ExpertiseItem>) => {
+    try {
+      await updateDoc(doc(db, 'expertise', String(id)), updatedData);
+    } catch (err) {
+      console.warn('Firestore update expertise fallback:', err);
+    }
+
+    fetch(`/api/expertise/${id}`, {
+      method: 'PUT',
+      headers: getAdminHeaders(),
+      body: JSON.stringify(updatedData),
+    }).catch(console.error);
+
+    setExpertise((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, ...updatedData } : e))
+    );
+  };
+
+  const handleDeleteExpertise = async (id: string | number) => {
+    try {
+      await deleteDoc(doc(db, 'expertise', String(id)));
+    } catch (err) {
+      console.warn('Firestore delete expertise fallback:', err);
+    }
+
+    fetch(`/api/expertise/${id}`, {
+      method: 'DELETE',
+      headers: getAdminHeaders(),
+    }).catch(console.error);
+
+    setExpertise((prev) => prev.filter((e) => e.id !== id));
+  };
+
 
   // ADMIN ACTIONS: Testimonials
   const handleAddTestimonial = async (tData: Omit<Testimonial, 'id'>) => {
@@ -487,7 +697,7 @@ export default function App() {
 
     fetch('/api/testimonials', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify(tData),
     }).catch(console.error);
   };
@@ -499,6 +709,11 @@ export default function App() {
       console.warn('Firestore delete testimonial error:', err);
     }
     setTestimonials((prev) => prev.filter((t) => t.id !== id));
+
+    fetch(`/api/testimonials/${id}`, {
+      method: 'DELETE',
+      headers: getAdminHeaders(),
+    }).catch(console.error);
   };
 
   const videoReels = projects.filter((p) => p.media_type === 'video');
@@ -514,23 +729,40 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF8F5] text-[#181716] flex flex-col">
+    <div className="min-h-screen bg-[#FAF8F5] text-[#111318] flex flex-col relative selection:bg-[#FF6900] selection:text-white">
+      {/* Subtle Warm Glow Background Accents matching Stitch */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <div className="absolute -top-[10%] left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-gradient-to-b from-[#FFEBD9]/50 to-transparent rounded-full blur-[140px]" />
+        <div className="absolute top-[40%] -right-[10%] w-[550px] h-[550px] bg-[#FFF2E5]/60 rounded-full blur-[160px]" />
+      </div>
+
       {/* Top Bar */}
       <Navbar
         onOpenAdmin={() => setIsAdminPortalOpen(true)}
         inquiryCount={inquiries.filter((i) => i.status === 'new').length}
       />
 
-      <main className="flex-1">
-        {/* Split Designer Hero Section */}
+      <main className="flex-1 w-full relative z-10">
+        {/* 1. Hero Section (#home) + 4 Statistics Cards */}
         <Hero
           stats={stats}
-          projects={projects}
-          onSelectProject={(project) => setSelectedProject(project)}
+          skills={skills}
           onViewCV={scrollToResume}
         />
 
-        {/* Design & Branding Portfolio Grid */}
+        {/* 2. About Me Section (#about) */}
+        <AboutSection />
+
+        {/* 3. Skills & Expertise (#skills) */}
+        <SkillsSection
+          skills={skills}
+          expertise={expertise}
+          onSelectExpertise={(item) => setSelectedExpertiseModal(item)}
+        />
+
+
+
+        {/* 4. Selected Works & Featured Projects (#projects) */}
         <PortfolioGrid
           projects={projects}
           onSelectProject={(project) => setSelectedProject(project)}
@@ -538,19 +770,10 @@ export default function App() {
           likedIds={likedIds}
         />
 
-        {/* Video Reels Section */}
-        {videoReels.length > 0 && (
-          <VideoReelsSection
-            reels={videoReels}
-            onLike={handleLike}
-            likedIds={likedIds}
-          />
-        )}
-
-        {/* Resume, Skills & Education (Powered by dynamic skills from Firestore) */}
+        {/* 5. Education & Training (#education) + Work Ethic & Languages */}
         <ResumeSection onOpenInquiry={scrollToContact} skills={skills} />
 
-        {/* Client Endorsements & Recommendations */}
+        {/* 6. Client Endorsements & Recommendations */}
         <TestimonialsSection
           testimonials={testimonials}
           onAddTestimonial={async (author, role, company, quote, rating) => {
@@ -558,7 +781,7 @@ export default function App() {
           }}
         />
 
-        {/* Contact & Database Inquiry Form */}
+        {/* 7. Let's Work Together Contact Section (#contact) */}
         <ContactSection
           onSubmitInquiry={handleSubmitInquiry}
           onOpenAdmin={() => setIsAdminPortalOpen(true)}
@@ -567,6 +790,9 @@ export default function App() {
 
       {/* Footer */}
       <Footer onOpenAdmin={() => setIsAdminPortalOpen(true)} />
+
+      {/* Mobile App Bottom Navigation Bar */}
+      <BottomNav />
 
       {/* Lightbox / Project Details Modal */}
       <ProjectLightbox
@@ -577,7 +803,15 @@ export default function App() {
         onAddComment={handleAddComment}
       />
 
-      {/* Strict Role-Based Admin Portal with 6 Dedicated Screens */}
+      {/* Skills & Expertise Full Detail Screen Modal (Rendered at Root for proper z-index and spacing) */}
+      <ExpertiseDetailModal
+        expertise={selectedExpertiseModal}
+        onClose={() => setSelectedExpertiseModal(null)}
+        onInquireService={() => scrollToContact()}
+      />
+
+
+      {/* Strict Role-Based Admin Portal with Dedicated Screens */}
       <AdminPortal
         isOpen={isAdminPortalOpen}
         onClose={() => setIsAdminPortalOpen(false)}
@@ -585,6 +819,7 @@ export default function App() {
         inquiries={inquiries}
         testimonials={testimonials}
         skills={skills}
+        expertise={expertise}
         stats={stats}
         onRefreshData={fetchAllData}
         onAddProject={handleAddProject}
@@ -595,9 +830,13 @@ export default function App() {
         onAddSkill={handleAddSkill}
         onUpdateSkill={handleUpdateSkill}
         onDeleteSkill={handleDeleteSkill}
+        onAddExpertise={handleAddExpertise}
+        onUpdateExpertise={handleUpdateExpertise}
+        onDeleteExpertise={handleDeleteExpertise}
         onAddTestimonial={handleAddTestimonial}
         onDeleteTestimonial={handleDeleteTestimonial}
       />
+
     </div>
   );
 }

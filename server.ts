@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 
@@ -10,22 +11,54 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
-// Ensure data directory exists
-const dataDir = path.join(__dirname, 'data');
+// Global Security Headers Middleware
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+// Ensure data directory exists (Handle Vercel serverless temp writable directory)
+const isVercel = Boolean(process.env.VERCEL);
+const dataDir = isVercel ? os.tmpdir() : path.join(__dirname, 'data');
 if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+  } catch (err) {
+    console.warn('Could not create data directory:', err);
+  }
 }
 
 // Initialize SQLite database
-const db = new Database(path.join(dataDir, 'portfolio.db'));
+const dbFile = path.join(dataDir, 'portfolio.db');
+if (isVercel && !fs.existsSync(dbFile)) {
+  const seedDbPath = path.join(__dirname, 'data', 'portfolio.db');
+  if (fs.existsSync(seedDbPath)) {
+    try {
+      fs.copyFileSync(seedDbPath, dbFile);
+    } catch (e) {
+      console.warn('Could not copy seed database to temp dir:', e);
+    }
+  }
+}
 
-// Pragmas for performance
-db.pragma('journal_mode = WAL');
+let db: any = null;
+try {
+  db = new Database(dbFile);
+  if (!isVercel) {
+    db.pragma('journal_mode = WAL');
+  }
+} catch (err) {
+  console.warn('SQLite initialization warning (running in serverless fallback mode):', err);
+}
 
-// Initialize schema
-db.exec(`
+// Initialize schema if database connection is active
+if (db) {
+  db.exec(`
   CREATE TABLE IF NOT EXISTS inquiries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -76,7 +109,295 @@ db.exec(`
     rating INTEGER DEFAULT 5,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS skills (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    proficiency INTEGER DEFAULT 90,
+    focus TEXT,
+    icon TEXT,
+    details TEXT,
+    sort_order INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS expertise (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    num TEXT,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL,
+    icon TEXT,
+    summary TEXT NOT NULL,
+    details TEXT,
+    tags TEXT,
+    tools TEXT,
+    coursework TEXT,
+    deliverables TEXT,
+    sort_order INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS admins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    role TEXT DEFAULT 'admin',
+    added_by TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
+}
+
+// Seed default initial tables if database is connected
+if (db) {
+  // Seed default initial admins if table is empty
+  const adminCount = db.prepare('SELECT COUNT(*) as count FROM admins').get() as { count: number };
+if (adminCount.count === 0) {
+  const insertAdmin = db.prepare('INSERT OR IGNORE INTO admins (email, role, added_by) VALUES (?, ?, ?)');
+  insertAdmin.run('rajahuzaifa015166@gmail.com', 'admin', 'system');
+  insertAdmin.run('munazza.00077@gmail.com', 'admin', 'system');
+  insertAdmin.run('aliraza1122alikhan@gmail.com', 'admin', 'system');
+}
+
+// Seed default initial skills if table is empty
+const skillCount = db.prepare('SELECT COUNT(*) as count FROM skills').get() as { count: number };
+if (skillCount.count === 0) {
+  const insertSkill = db.prepare(`
+    INSERT INTO skills (name, category, proficiency, focus, icon, details, sort_order)
+    VALUES (@name, @category, @proficiency, @focus, @icon, @details, @sort_order)
+  `);
+
+  const initialSkills = [
+    {
+      name: 'Canva Pro',
+      category: 'design',
+      proficiency: 95,
+      focus: 'Social Media & Banners',
+      icon: 'canva',
+      details: 'Creates cohesive brand kits, Instagram carousels, retail sale posters, business stationery, and web hero banners with balanced typography and luxury aesthetics.',
+      sort_order: 1,
+    },
+    {
+      name: 'Adobe Photoshop',
+      category: 'design',
+      proficiency: 85,
+      focus: 'Photo Composites & Flyers',
+      icon: 'photoshop',
+      details: 'Skilled in background removal, realistic shadow blending, commercial food/fashion poster retouching, tri-fold print flyers, and color-graded product mockups.',
+      sort_order: 2,
+    },
+    {
+      name: 'Adobe Premiere Pro',
+      category: 'video',
+      proficiency: 90,
+      focus: 'Reels Pacing & Beat Sync',
+      icon: 'premiere',
+      details: 'Edits vertical 9:16 real estate drone reels, corporate progress films, multi-split screen layouts, smooth speed-ramping, and clean audio mixing.',
+      sort_order: 3,
+    },
+    {
+      name: 'CapCut Studio',
+      category: 'video',
+      proficiency: 92,
+      focus: 'Viral Hooks & Urdu Captions',
+      icon: 'capcut',
+      details: 'Specializes in high-retention short-form pacing, bilingual Urdu/English animated subtitles, rhythmic sound FX, and engaging visual hooks for TikTok & Reels.',
+      sort_order: 4,
+    },
+    {
+      name: 'MS Word',
+      category: 'office',
+      proficiency: 95,
+      focus: 'Contracts & Documentation',
+      icon: 'word',
+      details: 'Prepares formal business letters, structured academic reports, formatted office contracts, CV layouts, and proofread administrative documentation.',
+      sort_order: 5,
+    },
+    {
+      name: 'MS Excel',
+      category: 'office',
+      proficiency: 90,
+      focus: 'Data Entry, Formulas & Tracking',
+      icon: 'excel',
+      details: 'Manages accurate data entry spreadsheets, inventory logs, attendance trackers, automated formulas, conditional formatting, and summary charts.',
+      sort_order: 6,
+    },
+    {
+      name: 'MS PowerPoint',
+      category: 'office',
+      proficiency: 92,
+      focus: 'Pitch Decks & Presentations',
+      icon: 'powerpoint',
+      details: 'Designs clean corporate slide decks, academic visual briefings, animated transitions, and executive reports tailored for meetings and client pitches.',
+      sort_order: 7,
+    },
+    {
+      name: 'Windows OS & Hardware',
+      category: 'it',
+      proficiency: 90,
+      focus: 'Setup, Troubleshooting & Drivers',
+      icon: 'windows',
+      details: 'Handles clean Windows installation, essential driver and software setup, printer/peripherals configuration, basic troubleshooting, and AI productivity workflows.',
+      sort_order: 8,
+    },
+    {
+      name: 'ChatGPT & Modern AI',
+      category: 'it',
+      proficiency: 88,
+      focus: 'Prompt Engineering & Productivity',
+      icon: 'chatgpt',
+      details: 'Leverages modern generative AI models for accelerated document outlining, customer response drafting, automated summarization, and creative inspiration.',
+      sort_order: 9,
+    },
+  ];
+
+  for (const s of initialSkills) {
+    insertSkill.run(s);
+  }
+}
+
+// Seed default initial expertise competencies if table is empty
+const expertiseCount = db.prepare('SELECT COUNT(*) as count FROM expertise').get() as { count: number };
+if (expertiseCount.count === 0) {
+  const insertExpertise = db.prepare(`
+    INSERT INTO expertise (num, title, category, icon, summary, details, tags, tools, coursework, deliverables, sort_order)
+    VALUES (@num, @title, @category, @icon, @summary, @details, @tags, @tools, @coursework, @deliverables, @sort_order)
+  `);
+
+  const initialExpertise = [
+    {
+      num: '01',
+      title: 'MS Office Suite & Operations',
+      category: 'office',
+      icon: 'file-text',
+      summary: 'Word, Excel, and PowerPoint for structured documents, data calculation sheets, reporting, and presentations.',
+      details: 'Advanced proficiency across the core Microsoft Office productivity suite. Specializes in producing executive-ready formal contracts, administrative correspondence, automated mathematical models in Excel, and branded presentation slide decks. Experienced with table styling, mail merge, conditional formatting, pivot tables, and master slide templates.',
+      tags: JSON.stringify(['MS Word', 'MS Excel', 'PowerPoint', 'Formulas', 'Templates']),
+      tools: JSON.stringify(['word', 'excel', 'powerpoint']),
+      coursework: 'Certified via 6-Month Intensive IT & Office Management Diploma with distinction in spreadsheet automation and document formatting.',
+      deliverables: JSON.stringify([
+        'Automated inventory and payroll calculation spreadsheets',
+        'Executive corporate correspondence & standardized contracts',
+        'Multi-slide branded visual pitch decks with custom animations',
+        'Data cleansing, formula modeling, and conditional formatting'
+      ]),
+      sort_order: 1,
+    },
+    {
+      num: '02',
+      title: 'Graphic Design & Visual Branding',
+      category: 'design',
+      icon: 'palette',
+      summary: 'Creating digital graphics, promotional flyers, posters, and social media visual assets with balanced composition.',
+      details: 'Comprehensive graphic design capabilities focusing on commercial social media creatives, corporate stationery, promotional posters, and luxury brand identity. Skilled in color harmony, typography pairing, hierarchy, image background removal, realistic shadow blending, and print-ready prepress export.',
+      tags: JSON.stringify(['Canva Pro', 'Photoshop', 'Branding', 'Social Media', 'Print Layout']),
+      tools: JSON.stringify(['canva', 'photoshop', 'illustrator']),
+      coursework: 'Practical creative modules encompassing 15+ simulated retail, hospitality, and educational client campaigns.',
+      deliverables: JSON.stringify([
+        'Cohesive social media feed carousels and promotional story kits',
+        'High-resolution tri-fold brochures and event flyers',
+        'Luxury stationery mockups and vector filigree emblems',
+        'Commercial product photo retouching and background extraction'
+      ]),
+      sort_order: 2,
+    },
+    {
+      num: '03',
+      title: 'Short-Form Video Editing & Motion',
+      category: 'video',
+      icon: 'film',
+      summary: 'High-retention short-form digital content creation with audio synchronization, beat-matched cuts, and animated captions.',
+      details: 'Specializes in vertical 9:16 content optimization for Instagram Reels, TikTok, and YouTube Shorts. Skilled in kinetic pacing, drone reel color enhancement, multi-screen framing, bilingual Urdu/English subtitles, dynamic sound effects, and retention-focused visual hooks.',
+      tags: JSON.stringify(['CapCut Studio', 'Premiere Pro', '9:16 Reels', 'Beat Sync', 'Urdu Captions']),
+      tools: JSON.stringify(['premiere', 'capcut', 'filmora']),
+      coursework: 'Real estate and construction progress video editing assignments featuring aerial drone cinematography.',
+      deliverables: JSON.stringify([
+        'High-energy real estate drone promotional reels',
+        'Synchronized bilingual Urdu/English animated subtitles',
+        'Seamless speed ramps, jump cuts, and beat-matched audio',
+        'High-converting video hook curation and audio mixing'
+      ]),
+      sort_order: 3,
+    },
+    {
+      num: '04',
+      title: 'IT Support & Systems Diagnostics',
+      category: 'it',
+      icon: 'cpu',
+      summary: 'Windows installation, drivers and software setup, peripheral configuration, hardware diagnostics, and routine troubleshooting.',
+      details: 'Hands-on technical workstation administration. Experienced in clean Windows 10/11 operating system deployments, device driver configuration, registry optimizations, peripheral setup (printers, scanners, dual monitors), malware removal, and office network troubleshooting.',
+      tags: JSON.stringify(['Windows OS', 'Hardware Setup', 'Driver Config', 'Diagnostics', 'System Recovery']),
+      tools: JSON.stringify(['windows', 'hardware', 'diagnostics']),
+      coursework: 'Hardware laboratory hands-on training including complete PC assembly, disk partitioning, and OS recovery.',
+      deliverables: JSON.stringify([
+        'Clean OS installation, disk partitioning, and UEFI/BIOS setup',
+        'Office workstation peripheral and printer network configuration',
+        'Hardware diagnostics, driver conflicts resolution, and system recovery',
+        'Data backup protocols and preventive maintenance routines'
+      ]),
+      sort_order: 4,
+    },
+    {
+      num: '05',
+      title: 'Internet Research & Academic Data Mining',
+      category: 'research',
+      icon: 'globe',
+      summary: 'Advanced web browsing, systematic online data gathering, academic research compilation, and digital correspondence.',
+      details: 'Leveraging structured research methodologies to synthesize complex information across academic databases, competitive industry landscapes, and digital directories. Paired with BS English linguistics training for rigorous critical analysis and articulated executive briefings.',
+      tags: JSON.stringify(['Data Mining', 'Academic Search', 'Information Retrieval', 'Fact Checking']),
+      tools: JSON.stringify(['chatgpt', 'claude']),
+      coursework: 'Linguistic discourse analysis and academic literature reviews as part of ongoing BS English degree.',
+      deliverables: JSON.stringify([
+        'Comprehensive competitive market analysis and directory mining',
+        'Structured academic bibliography and literature summarization',
+        'Executive briefing memos and formal business correspondence',
+        'Validated contact database curation and lead extraction'
+      ]),
+      sort_order: 5,
+    },
+    {
+      num: '06',
+      title: 'Online Collaboration & Virtual Operations',
+      category: 'collaboration',
+      icon: 'users',
+      summary: 'Managing meetings, real-time screen sharing, cloud drive organization, and collaborative workspace communication.',
+      details: 'Coordinating hybrid and remote operational workflows using contemporary cloud collaboration tools. Expert in scheduling multi-party video conferences, moderating screen shares, managing Google Workspace / Microsoft 365 cloud directory architectures, and maintaining seamless team communications.',
+      tags: JSON.stringify(['Zoom', 'Google Workspace', 'MS Teams', 'Cloud Drive', 'Remote Workflows']),
+      tools: JSON.stringify(['zoom', 'googleworkspace']),
+      coursework: 'Office simulation training managing virtual calendars, meetings, and shared repository permissions.',
+      deliverables: JSON.stringify([
+        'Meeting agenda preparation, scheduling, and live minute recording',
+        'Structured Google Drive / OneDrive folder hierarchies and access control',
+        'Remote team onboarding documentation and virtual desk assistance',
+        'Cross-channel collaborative correspondence and follow-ups'
+      ]),
+      sort_order: 6,
+    },
+    {
+      num: '07',
+      title: 'AI Fundamentals & Productivity Workflows',
+      category: 'ai',
+      icon: 'brain',
+      summary: 'Modern AI engines, prompt engineering for document drafting, data structuring, creative ideation, and workflow acceleration.',
+      details: 'Applying cutting-edge generative AI models (ChatGPT, Claude, Gemini) to augment daily office productivity. Specializes in crafting precise multi-turn prompts for rapid content drafting, spreadsheet formula generation, customer reply curation, and workflow automation.',
+      tags: JSON.stringify(['Prompt Engineering', 'ChatGPT', 'Claude', 'Workflow Acceleration', 'Automation']),
+      tools: JSON.stringify(['chatgpt', 'claude']),
+      coursework: 'Independent AI productivity experimentation applied directly to academic linguistic tasks and design workflows.',
+      deliverables: JSON.stringify([
+        'Custom multi-step prompt templates for corporate documentation',
+        'Rapid copywriting, summarization, and email reply generation',
+        'Complex Excel formula generation and debugging via prompt models',
+        'Creative ideation and visual brief structuring for design assets'
+      ]),
+      sort_order: 7,
+    },
+  ];
+
+  for (const exp of initialExpertise) {
+    insertExpertise.run(exp);
+  }
+}
+
 
 // Seed default initial projects if table is empty
 const projectCount = db.prepare('SELECT COUNT(*) as count FROM projects').get() as { count: number };
@@ -413,7 +734,7 @@ if (projectCount.count === 0) {
     },
   ];
 
-  const seedTransaction = db.transaction((projects) => {
+  const seedTransaction = db.transaction((projects: any[]) => {
     for (const project of projects) {
       insertProject.run(project);
     }
@@ -448,7 +769,62 @@ if (projectCount.count === 0) {
     'Her social media posts and summer lawn graphics helped elevate our online engagement. Highly recommended for creative design.',
     5
   );
+  }
 }
+
+// REST API Security & Authorization Middleware
+const DESIGNATED_SUPER_ADMINS = [
+  'munazza.00077@gmail.com',
+  'rajahuzaifa015166@gmail.com',
+  'aliraza1122alikhan@gmail.com',
+];
+
+const requireAdminAuth = (req: Request, res: Response, next: () => void) => {
+  const adminEmailHeader = req.headers['x-admin-email'];
+  const authHeader = req.headers['authorization'];
+  const adminSecretKey = process.env.ADMIN_SECRET_KEY;
+  const providedSecret = req.headers['x-admin-secret'];
+
+  // Check master secret key bypass if configured in environment
+  if (adminSecretKey && providedSecret === adminSecretKey) {
+    return next();
+  }
+
+  let candidateEmail = '';
+  if (typeof adminEmailHeader === 'string' && adminEmailHeader.trim()) {
+    candidateEmail = adminEmailHeader.trim().toLowerCase();
+  } else if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    candidateEmail = authHeader.replace('Bearer ', '').trim().toLowerCase();
+  }
+
+  if (!candidateEmail) {
+    return res.status(401).json({
+      error: 'Unauthorized: Administrative credentials required. Please provide a valid x-admin-email header.',
+    });
+  }
+
+  // Check if email belongs to designated super admins
+  if (DESIGNATED_SUPER_ADMINS.includes(candidateEmail)) {
+    return next();
+  }
+
+  // Check SQLite admins table
+  try {
+    const adminRecord = db
+      .prepare('SELECT email, role FROM admins WHERE LOWER(email) = ?')
+      .get(candidateEmail) as { email: string; role: string } | undefined;
+
+    if (adminRecord && (adminRecord.role === 'admin' || adminRecord.role === 'superadmin')) {
+      return next();
+    }
+  } catch (err) {
+    console.error('Error validating admin credentials against SQLite:', err);
+  }
+
+  return res.status(403).json({
+    error: 'Forbidden: The provided account is not registered as an authorized administrator.',
+  });
+};
 
 // REST API Endpoints
 
@@ -590,8 +966,8 @@ app.get('/api/testimonials', (_req: Request, res: Response) => {
   }
 });
 
-// POST /api/testimonials
-app.post('/api/testimonials', (req: Request, res: Response) => {
+// POST /api/testimonials (Protected Admin API)
+app.post('/api/testimonials', requireAdminAuth, (req: Request, res: Response) => {
   try {
     const { author, role, company, quote, rating } = req.body;
     if (!author || !quote) {
@@ -617,8 +993,19 @@ app.post('/api/testimonials', (req: Request, res: Response) => {
   }
 });
 
-// GET /api/inquiries
-app.get('/api/inquiries', (_req: Request, res: Response) => {
+// DELETE /api/testimonials/:id (Protected Admin API)
+app.delete('/api/testimonials/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const target = req.params.id;
+    const result = db.prepare('DELETE FROM testimonials WHERE id = ?').run(target);
+    res.json({ success: true, changes: result.changes });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// GET /api/inquiries (Protected Admin API - Client Inquiries & Contact Details)
+app.get('/api/inquiries', requireAdminAuth, (_req: Request, res: Response) => {
   try {
     const rows = db.prepare('SELECT * FROM inquiries ORDER BY created_at DESC').all();
     res.json(rows);
@@ -627,26 +1014,41 @@ app.get('/api/inquiries', (_req: Request, res: Response) => {
   }
 });
 
-// POST /api/inquiries
+// POST /api/inquiries (Public Contact Form with Input Sanitization & Protection)
 app.post('/api/inquiries', (req: Request, res: Response) => {
   try {
     const { name, email, phone, service, budget, timeline, message } = req.body;
-    if (!name || !email || !message) {
-      return res.status(400).json({ error: 'Name, email and message are required' });
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'Valid name is required' });
     }
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return res.status(400).json({ error: 'Valid email address is required' });
+    }
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({ error: 'Message cannot be empty' });
+    }
+
+    // Input bounds sanitization
+    const cleanName = name.trim().slice(0, 100);
+    const cleanEmail = email.trim().toLowerCase().slice(0, 120);
+    const cleanPhone = (phone ? String(phone).trim() : '').slice(0, 50);
+    const cleanService = (service ? String(service).trim() : 'General Inquiry').slice(0, 100);
+    const cleanBudget = (budget ? String(budget).trim() : '').slice(0, 50);
+    const cleanTimeline = (timeline ? String(timeline).trim() : '').slice(0, 50);
+    const cleanMessage = message.trim().slice(0, 5000);
 
     const stmt = db.prepare(`
       INSERT INTO inquiries (name, email, phone, service, budget, timeline, message)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     const info = stmt.run(
-      name.trim(),
-      email.trim(),
-      (phone || '').trim(),
-      (service || 'General Inquiry').trim(),
-      (budget || '').trim(),
-      (timeline || '').trim(),
-      message.trim()
+      cleanName,
+      cleanEmail,
+      cleanPhone,
+      cleanService,
+      cleanBudget,
+      cleanTimeline,
+      cleanMessage
     );
 
     const created = db.prepare('SELECT * FROM inquiries WHERE id = ?').get(info.lastInsertRowid);
@@ -656,8 +1058,8 @@ app.post('/api/inquiries', (req: Request, res: Response) => {
   }
 });
 
-// PATCH /api/inquiries/:id
-app.patch('/api/inquiries/:id', (req: Request, res: Response) => {
+// PATCH /api/inquiries/:id (Protected Admin API)
+app.patch('/api/inquiries/:id', requireAdminAuth, (req: Request, res: Response) => {
   try {
     const { status } = req.body;
     if (!status) {
@@ -672,8 +1074,8 @@ app.patch('/api/inquiries/:id', (req: Request, res: Response) => {
   }
 });
 
-// DELETE /api/inquiries/:id
-app.delete('/api/inquiries/:id', (req: Request, res: Response) => {
+// DELETE /api/inquiries/:id (Protected Admin API)
+app.delete('/api/inquiries/:id', requireAdminAuth, (req: Request, res: Response) => {
   try {
     db.prepare('DELETE FROM inquiries WHERE id = ?').run(req.params.id);
     res.json({ success: true });
@@ -682,18 +1084,18 @@ app.delete('/api/inquiries/:id', (req: Request, res: Response) => {
   }
 });
 
-// POST /api/projects (Create new project from Admin)
-app.post('/api/projects', (req: Request, res: Response) => {
+// POST /api/projects (Protected Admin API - Create project)
+app.post('/api/projects', requireAdminAuth, (req: Request, res: Response) => {
   try {
-    const { title, category, media_type, media_url, client_or_brand, description, tags, aspect_ratio } = req.body;
+    const { title, category, media_type, media_url, client_or_brand, description, tags, aspect_ratio, featured, sort_order } = req.body;
     if (!title || !media_url) {
       return res.status(400).json({ error: 'Title and media_url are required' });
     }
 
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
     const stmt = db.prepare(`
-      INSERT INTO projects (slug, title, category, media_type, media_url, client_or_brand, description, tags, aspect_ratio, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO projects (slug, title, category, media_type, media_url, client_or_brand, description, tags, aspect_ratio, featured, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const info = stmt.run(
@@ -706,7 +1108,8 @@ app.post('/api/projects', (req: Request, res: Response) => {
       (description || '').trim(),
       JSON.stringify(Array.isArray(tags) ? tags : []),
       aspect_ratio || '1:1',
-      0
+      featured ? 1 : 0,
+      Number(sort_order) || 0
     );
 
     const created = db.prepare('SELECT * FROM projects WHERE id = ?').get(info.lastInsertRowid) as any;
@@ -719,6 +1122,344 @@ app.post('/api/projects', (req: Request, res: Response) => {
     res.status(500).json({ error: (error as Error).message });
   }
 });
+
+// PUT /api/projects/:id (Protected Admin API - Update project)
+app.put('/api/projects/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const target = req.params.id;
+    const existing = db.prepare('SELECT * FROM projects WHERE id = ? OR slug = ?').get(target, target) as any;
+    if (!existing) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { title, category, media_type, media_url, client_or_brand, description, tags, aspect_ratio, featured, sort_order } = req.body;
+
+    const updatedTitle = title !== undefined ? String(title).trim() : existing.title;
+    const updatedCategory = category !== undefined ? String(category) : existing.category;
+    const updatedMediaType = media_type !== undefined ? String(media_type) : existing.media_type;
+    const updatedMediaUrl = media_url !== undefined ? String(media_url).trim() : existing.media_url;
+    const updatedClient = client_or_brand !== undefined ? String(client_or_brand).trim() : existing.client_or_brand;
+    const updatedDesc = description !== undefined ? String(description).trim() : existing.description;
+    const updatedTags = tags !== undefined ? (Array.isArray(tags) ? JSON.stringify(tags) : String(tags)) : existing.tags;
+    const updatedRatio = aspect_ratio !== undefined ? String(aspect_ratio) : existing.aspect_ratio;
+    const updatedFeatured = featured !== undefined ? (featured ? 1 : 0) : existing.featured;
+    const updatedSortOrder = sort_order !== undefined ? Number(sort_order) : existing.sort_order;
+
+    db.prepare(`
+      UPDATE projects
+      SET title = ?, category = ?, media_type = ?, media_url = ?, client_or_brand = ?,
+          description = ?, tags = ?, aspect_ratio = ?, featured = ?, sort_order = ?
+      WHERE id = ?
+    `).run(
+      updatedTitle,
+      updatedCategory,
+      updatedMediaType,
+      updatedMediaUrl,
+      updatedClient,
+      updatedDesc,
+      updatedTags,
+      updatedRatio,
+      updatedFeatured,
+      updatedSortOrder,
+      existing.id
+    );
+
+    const updated = db.prepare('SELECT * FROM projects WHERE id = ?').get(existing.id) as any;
+    res.json({
+      ...updated,
+      featured: Boolean(updated.featured),
+      tags: updated.tags ? JSON.parse(updated.tags) : [],
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// DELETE /api/projects/:id (Protected Admin API - Delete project)
+app.delete('/api/projects/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const target = req.params.id;
+    const result = db.prepare('DELETE FROM projects WHERE id = ? OR slug = ?').run(target, target);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    res.json({ success: true, changes: result.changes });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// GET /api/skills
+app.get('/api/skills', (_req: Request, res: Response) => {
+  try {
+    const rows = db.prepare('SELECT * FROM skills ORDER BY sort_order ASC, id ASC').all();
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// POST /api/skills (Protected Admin API)
+app.post('/api/skills', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { name, category, proficiency, focus, icon, details, sort_order } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Skill name is required' });
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO skills (name, category, proficiency, focus, icon, details, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const info = stmt.run(
+      name.trim(),
+      category || 'design',
+      Number(proficiency) || 90,
+      (focus || '').trim(),
+      (icon || 'canva').trim(),
+      (details || '').trim(),
+      Number(sort_order) || 0
+    );
+
+    const created = db.prepare('SELECT * FROM skills WHERE id = ?').get(info.lastInsertRowid);
+    res.status(201).json(created);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// PUT /api/skills/:id (Protected Admin API)
+app.put('/api/skills/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { name, category, proficiency, focus, icon, details } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Skill name is required' });
+    }
+
+    db.prepare(`
+      UPDATE skills
+      SET name = ?, category = ?, proficiency = ?, focus = ?, icon = ?, details = ?
+      WHERE id = ?
+    `).run(
+      name.trim(),
+      category || 'design',
+      Number(proficiency) || 90,
+      (focus || '').trim(),
+      (icon || 'canva').trim(),
+      (details || '').trim(),
+      req.params.id
+    );
+
+    const updated = db.prepare('SELECT * FROM skills WHERE id = ?').get(req.params.id);
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// DELETE /api/skills/:id (Protected Admin API)
+app.delete('/api/skills/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    db.prepare('DELETE FROM skills WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+function parseExpertiseRow(row: any) {
+  if (!row) return null;
+  const safeParse = (val: any) => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : [String(parsed)];
+    } catch {
+      return String(val).split(',').map((s) => s.trim()).filter(Boolean);
+    }
+  };
+
+  return {
+    ...row,
+    tags: safeParse(row.tags),
+    tools: safeParse(row.tools),
+    deliverables: safeParse(row.deliverables),
+  };
+}
+
+// GET /api/expertise (Public)
+app.get('/api/expertise', (_req: Request, res: Response) => {
+  try {
+    const rows = db.prepare('SELECT * FROM expertise ORDER BY sort_order ASC, id ASC').all();
+    res.json(rows.map(parseExpertiseRow));
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// POST /api/expertise (Protected Admin API)
+app.post('/api/expertise', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { num, title, category, icon, summary, details, tags, tools, coursework, deliverables, sort_order } = req.body;
+    if (!title) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO expertise (num, title, category, icon, summary, details, tags, tools, coursework, deliverables, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const stringifyArray = (val: any) => {
+      if (!val) return JSON.stringify([]);
+      if (Array.isArray(val)) return JSON.stringify(val);
+      if (typeof val === 'string') {
+        if (val.startsWith('[')) return val;
+        return JSON.stringify(val.split(',').map((s) => s.trim()).filter(Boolean));
+      }
+      return JSON.stringify([]);
+    };
+
+    const info = stmt.run(
+      (num || '').trim(),
+      title.trim(),
+      category || 'office',
+      (icon || 'file-text').trim(),
+      (summary || '').trim(),
+      (details || '').trim(),
+      stringifyArray(tags),
+      stringifyArray(tools),
+      (coursework || '').trim(),
+      stringifyArray(deliverables),
+      Number(sort_order) || 0
+    );
+
+    const created = db.prepare('SELECT * FROM expertise WHERE id = ?').get(info.lastInsertRowid);
+    res.status(201).json(parseExpertiseRow(created));
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// PUT /api/expertise/:id (Protected Admin API)
+app.put('/api/expertise/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { num, title, category, icon, summary, details, tags, tools, coursework, deliverables, sort_order } = req.body;
+    if (!title) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+
+    const stringifyArray = (val: any) => {
+      if (!val) return JSON.stringify([]);
+      if (Array.isArray(val)) return JSON.stringify(val);
+      if (typeof val === 'string') {
+        if (val.startsWith('[')) return val;
+        return JSON.stringify(val.split(',').map((s) => s.trim()).filter(Boolean));
+      }
+      return JSON.stringify([]);
+    };
+
+    db.prepare(`
+      UPDATE expertise
+      SET num = ?, title = ?, category = ?, icon = ?, summary = ?, details = ?, tags = ?, tools = ?, coursework = ?, deliverables = ?, sort_order = ?
+      WHERE id = ?
+    `).run(
+      (num || '').trim(),
+      title.trim(),
+      category || 'office',
+      (icon || 'file-text').trim(),
+      (summary || '').trim(),
+      (details || '').trim(),
+      stringifyArray(tags),
+      stringifyArray(tools),
+      (coursework || '').trim(),
+      stringifyArray(deliverables),
+      Number(sort_order) || 0,
+      req.params.id
+    );
+
+    const updated = db.prepare('SELECT * FROM expertise WHERE id = ?').get(req.params.id);
+    res.json(parseExpertiseRow(updated));
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// DELETE /api/expertise/:id (Protected Admin API)
+app.delete('/api/expertise/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    db.prepare('DELETE FROM expertise WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// GET /api/admins/verify (Public verification endpoint - checks admin status without leaking list)
+app.get('/api/admins/verify', (req: Request, res: Response) => {
+  try {
+    const emailParam = (req.query.email as string || '').toLowerCase().trim();
+    if (!emailParam) {
+      return res.json({ isAdmin: false });
+    }
+    if (DESIGNATED_SUPER_ADMINS.includes(emailParam)) {
+      return res.json({ isAdmin: true, role: 'superadmin' });
+    }
+    const row = db.prepare('SELECT role FROM admins WHERE LOWER(email) = ?').get(emailParam) as { role: string } | undefined;
+    if (row && (row.role === 'admin' || row.role === 'superadmin')) {
+      return res.json({ isAdmin: true, role: row.role });
+    }
+    return res.json({ isAdmin: false });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// GET /api/admins (Protected Admin API - Lists all active studio administrators)
+app.get('/api/admins', requireAdminAuth, (_req: Request, res: Response) => {
+  try {
+    const rows = db.prepare('SELECT id, email, role, added_by, created_at FROM admins ORDER BY id ASC').all();
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// POST /api/admins (Protected Admin API - Add or update an admin)
+app.post('/api/admins', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { email, role = 'admin', added_by = 'admin' } = req.body;
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return res.status(400).json({ error: 'Valid email is required' });
+    }
+    const normalized = email.toLowerCase().trim();
+    const stmt = db.prepare(
+      'INSERT INTO admins (email, role, added_by) VALUES (?, ?, ?) ON CONFLICT(email) DO UPDATE SET role = excluded.role'
+    );
+    const result = stmt.run(normalized, role, added_by);
+    res.status(201).json({ id: result.lastInsertRowid, email: normalized, role, added_by });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// DELETE /api/admins/:id (Protected Admin API - Revoke an admin)
+app.delete('/api/admins/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const target = req.params.id;
+    if (isNaN(Number(target))) {
+      db.prepare('DELETE FROM admins WHERE LOWER(email) = ?').run(target.toLowerCase().trim());
+    } else {
+      db.prepare('DELETE FROM admins WHERE id = ? OR LOWER(email) = ?').run(target, target.toLowerCase().trim());
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 
 // Serve static assets from public
 app.use(express.static(path.join(__dirname, 'public')));
@@ -744,4 +1485,11 @@ async function setupServer() {
   });
 }
 
-setupServer();
+// Export Express app for Vercel Serverless Functions
+export { app };
+export default app;
+
+// Only start HTTP listener when running as a standalone server (not inside Vercel serverless)
+if (!process.env.VERCEL) {
+  setupServer();
+}

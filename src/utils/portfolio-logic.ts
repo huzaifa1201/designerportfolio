@@ -125,6 +125,21 @@ export function validateInquiryForm(input: InquiryInput): { valid: boolean; erro
 export type SkillCategory = 'design' | 'video' | 'office' | 'it';
 
 export const SKILL_ICON_KEYS = [
+  'canva',
+  'photoshop',
+  'illustrator',
+  'premiere',
+  'aftereffects',
+  'capcut',
+  'filmora',
+  'word',
+  'excel',
+  'powerpoint',
+  'windows',
+  'chatgpt',
+  'claude',
+  'google',
+  'zoom',
   'palette',
   'sparkles',
   'pen-tool',

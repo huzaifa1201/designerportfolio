@@ -86,12 +86,16 @@ export const VideoReelsSection: React.FC<VideoReelsSectionProps> = ({ reels, onL
   return (
     <section
       id="reels"
-      className="relative py-20 lg:py-24 bg-[#181716] text-[#FAF8F5] border-t border-[#2C2926] overflow-hidden"
+      className="relative py-20 lg:py-24 bg-[#0A0B10] text-white border-t border-white/10 overflow-hidden"
     >
-      {/* Subtle Champagne Ambient Glow */}
+      {/* Subtle Amber & Violet Ambient Glow */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -top-28 left-1/4 h-[420px] w-[420px] rounded-full bg-[#C5A880]/10 blur-[140px]"
+        className="pointer-events-none absolute -top-28 left-1/4 h-[420px] w-[420px] rounded-full bg-amber-500/10 blur-[150px]"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute bottom-0 right-10 h-[360px] w-[360px] rounded-full bg-violet-600/10 blur-[140px]"
       />
 
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">

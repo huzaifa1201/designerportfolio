@@ -24,24 +24,30 @@ import {
   UploadCloud,
   X,
   Lock,
+  Sparkles,
+  Layers,
 } from 'lucide-react';
-import { Project, Inquiry, Testimonial, SkillItem, PortfolioStats } from '../types';
+import { Project, Inquiry, Testimonial, SkillItem, PortfolioStats, ExpertiseItem } from '../types';
 import {
   auth,
   db,
   User,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   signOut,
   updateEmail,
   updatePassword,
   checkIsUserAdmin,
   ensureAdminRecord,
   seedFirestoreDatabase,
+  fetchAdminList,
+  addAdminUser,
+  removeAdminUser,
+  AdminUserRecord,
 } from '../lib/firebase';
 import { doc, setDoc, updateDoc } from 'firebase/firestore';
-import { SKILL_ICON_OPTIONS, SkillIcon } from './SkillIcon';
+import { SKILL_ICON_OPTIONS, APP_LOGO_OPTIONS, SkillIcon } from './SkillIcon';
 import { getDefaultSkillIcon, SkillCategory, SkillIconKey } from '../utils/portfolio-logic';
+import { ExpertiseDetailModal } from './ExpertiseDetailModal';
 
 interface AdminPortalProps {
   isOpen: boolean;
@@ -50,6 +56,7 @@ interface AdminPortalProps {
   inquiries: Inquiry[];
   testimonials: Testimonial[];
   skills: SkillItem[];
+  expertise?: ExpertiseItem[];
   stats: PortfolioStats | null;
   onRefreshData: () => Promise<void>;
   onAddProject: (project: any) => Promise<void>;
@@ -60,6 +67,9 @@ interface AdminPortalProps {
   onAddSkill: (skill: Omit<SkillItem, 'id'>) => Promise<void>;
   onUpdateSkill: (id: string | number, skill: Partial<SkillItem>) => Promise<void>;
   onDeleteSkill: (id: string | number) => Promise<void>;
+  onAddExpertise?: (item: Omit<ExpertiseItem, 'id'>) => Promise<void>;
+  onUpdateExpertise?: (id: string | number, item: Partial<ExpertiseItem>) => Promise<void>;
+  onDeleteExpertise?: (id: string | number) => Promise<void>;
   onAddTestimonial: (t: Omit<Testimonial, 'id'>) => Promise<void>;
   onDeleteTestimonial: (id: string | number) => Promise<void>;
 }
@@ -71,6 +81,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   inquiries,
   testimonials,
   skills,
+  expertise = [],
   stats,
   onRefreshData,
   onAddProject,
@@ -81,20 +92,40 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onAddSkill,
   onUpdateSkill,
   onDeleteSkill,
+  onAddExpertise,
+  onUpdateExpertise,
+  onDeleteExpertise,
   onAddTestimonial,
   onDeleteTestimonial,
 }) => {
+  // Active screen with localStorage persistence across reloads
   const [activeScreen, setActiveScreen] = useState<
-    'overview' | 'projects' | 'inquiries' | 'skills' | 'testimonials' | 'settings'
-  >('overview');
+    'overview' | 'projects' | 'inquiries' | 'expertise' | 'skills' | 'testimonials' | 'settings'
+  >(() => {
+    try {
+      const saved = localStorage.getItem('studio_admin_active_screen');
+      if (
+        saved &&
+        ['overview', 'projects', 'inquiries', 'expertise', 'skills', 'testimonials', 'settings'].includes(saved)
+      ) {
+        return saved as any;
+      }
+    } catch {}
+    return 'overview';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio_admin_active_screen', activeScreen);
+    } catch {}
+  }, [activeScreen]);
 
   // RBAC State
   const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
 
-  // Login / Register Form State
-  const [authMode, setAuthMode] = useState<'signin' | 'register'>('signin');
+  // Login Form State (Strictly Sign In - Registration from outside disabled)
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -104,6 +135,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [adminList, setAdminList] = useState<AdminUserRecord[]>([]);
+  const [adminListLoading, setAdminListLoading] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
@@ -145,6 +178,39 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     details: '',
   });
 
+  // Expertise Modal State
+  const [isExpertiseModalOpen, setIsExpertiseModalOpen] = useState(false);
+  const [editingExpertiseId, setEditingExpertiseId] = useState<string | number | null>(null);
+  const [expertiseError, setExpertiseError] = useState<string | null>(null);
+  const [expertiseSaving, setExpertiseSaving] = useState(false);
+  const [previewingExpertise, setPreviewingExpertise] = useState<ExpertiseItem | null>(null);
+  const [expertiseForm, setExpertiseForm] = useState<{
+    num: string;
+    title: string;
+    category: ExpertiseItem['category'];
+    icon: string;
+    summary: string;
+    details: string;
+    tags: string;
+    tools: string;
+    coursework: string;
+    deliverables: string;
+    sort_order: number;
+  }>({
+    num: '01',
+    title: '',
+    category: 'office',
+    icon: 'file-text',
+    summary: '',
+    details: '',
+    tags: '',
+    tools: '',
+    coursework: '',
+    deliverables: '',
+    sort_order: 1,
+  });
+
+
   // Testimonial Modal State
   const [isTestimonialModalOpen, setIsTestimonialModalOpen] = useState(false);
   const [testimonialForm, setTestimonialForm] = useState({
@@ -176,39 +242,56 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     return () => unsub();
   }, []);
 
+
+  // Load administrators list
+  const loadAdmins = async () => {
+    setAdminListLoading(true);
+    try {
+      const list = await fetchAdminList();
+      setAdminList(list);
+    } catch (e) {
+      console.error('Failed to load admins:', e);
+    } finally {
+      setAdminListLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && isAdmin) {
+      loadAdmins();
+    }
+  }, [isOpen, isAdmin, activeScreen]);
+
   if (!isOpen) return null;
 
-  // Handle Login / Registration
+  // Handle Administrator Login (Sign in only - creation only allowed from dashboard or Firestore)
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
     setAuthError(null);
 
     try {
-      if (authMode === 'signin') {
-        const cred = await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
-        const check = await checkIsUserAdmin(cred.user);
-        setIsAdmin(check);
-        if (!check) {
-          setAuthError('Authentication succeeded, but your account lacks the Admin role.');
-        }
+      const cred = await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
+      const check = await checkIsUserAdmin(cred.user);
+      if (!check) {
+        await signOut(auth);
+        setIsAdmin(false);
+        setAuthError(
+          'Access Denied: Your account does not have administrator privileges. New administrators must be added through the Studio Admin Portal by an existing administrator.'
+        );
       } else {
-        const cred = await createUserWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
-        await ensureAdminRecord(cred.user.uid, cred.user.email || loginEmail.trim());
-        const check = await checkIsUserAdmin(cred.user);
-        setIsAdmin(check);
+        setIsAdmin(true);
+        setAuthError(null);
+        setLoginEmail('');
+        setLoginPassword('');
       }
-      setLoginEmail('');
-      setLoginPassword('');
     } catch (err: any) {
       console.error(err);
       let msg = err.message || 'Authentication failed';
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
-        msg = 'Invalid email or password.';
-      } else if (err.code === 'auth/email-already-in-use') {
-        msg = 'This email is already registered. Please sign in instead.';
-      } else if (err.code === 'auth/weak-password') {
-        msg = 'Password must be at least 6 characters.';
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        msg = 'Invalid email address or password.';
+      } else if (err.code === 'auth/too-many-requests') {
+        msg = 'Too many failed login attempts. Please wait a few moments and try again.';
       }
       setAuthError(msg);
     } finally {
@@ -217,6 +300,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   };
 
   const handleSignOut = async () => {
+    try {
+      localStorage.removeItem('studio_admin_active_screen');
+    } catch {}
     await signOut(auth);
     setIsAdmin(false);
   };
@@ -277,26 +363,53 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }
   };
 
+
   const handleAddAdminEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAdminEmail.trim()) return;
+    if (!newAdminEmail.trim() || !newAdminEmail.includes('@')) {
+      setSettingsMessage({ type: 'error', text: 'Please enter a valid email address.' });
+      return;
+    }
     setSettingsLoading(true);
     setSettingsMessage(null);
 
     try {
-      const docId = newAdminEmail.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      await setDoc(doc(db, 'admins', docId), {
-        email: newAdminEmail.trim().toLowerCase(),
-        role: 'admin',
-        created_at: new Date().toISOString(),
-      });
+      await addAdminUser(newAdminEmail.trim(), currentUser?.email || 'admin');
       setSettingsMessage({
         type: 'success',
-        text: `Added ${newAdminEmail.trim()} as authorized administrator.`,
+        text: `Success! Granted admin role to ${newAdminEmail.trim()}. They can now sign in to the studio after holding the logo for 10 seconds.`,
       });
       setNewAdminEmail('');
+      await loadAdmins();
     } catch (err: any) {
-      setSettingsMessage({ type: 'error', text: err.message || 'Failed to grant admin role.' });
+      setSettingsMessage({ type: 'error', text: err?.message || 'Failed to grant admin role.' });
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const handleRevokeAdmin = async (admin: AdminUserRecord) => {
+    const isSelf = admin.email.toLowerCase() === currentUser?.email?.toLowerCase();
+    const promptMsg = isSelf
+      ? `Are you sure you want to remove your OWN admin access (${admin.email})? You will be signed out immediately.`
+      : `Are you sure you want to remove ${admin.email} from administrators?`;
+
+    if (!window.confirm(promptMsg)) {
+      return;
+    }
+    setSettingsLoading(true);
+    try {
+      await removeAdminUser(admin.id || admin.email);
+      setSettingsMessage({
+        type: 'success',
+        text: `Successfully removed ${admin.email} from administrators.`,
+      });
+      await loadAdmins();
+      if (isSelf) {
+        await handleSignOut();
+      }
+    } catch (err: any) {
+      setSettingsMessage({ type: 'error', text: err?.message || 'Failed to remove admin.' });
     } finally {
       setSettingsLoading(false);
     }
@@ -405,6 +518,80 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }
   };
 
+  // Expertise Modal Actions
+  const openNewExpertiseModal = () => {
+    setEditingExpertiseId(null);
+    setExpertiseError(null);
+    const nextNum = expertise.length + 1;
+    setExpertiseForm({
+      num: nextNum < 10 ? `0${nextNum}` : `${nextNum}`,
+      title: '',
+      category: 'design',
+      icon: 'palette',
+      summary: '',
+      details: '',
+      tags: 'Canva Pro, Photoshop, Branding',
+      tools: 'canva, photoshop',
+      coursework: 'Completed during 6-Month IT Diploma course with practical assignments.',
+      deliverables: 'Brand Identity Kits\nSocial Media Carousels\nTri-Fold Brochures',
+      sort_order: nextNum,
+    });
+    setIsExpertiseModalOpen(true);
+  };
+
+  const openEditExpertiseModal = (item: ExpertiseItem) => {
+    setEditingExpertiseId(item.id);
+    setExpertiseError(null);
+    setExpertiseForm({
+      num: item.num || '',
+      title: item.title,
+      category: item.category,
+      icon: item.icon || 'file-text',
+      summary: item.summary,
+      details: item.details || '',
+      tags: Array.isArray(item.tags) ? item.tags.join(', ') : (item.tags || ''),
+      tools: Array.isArray(item.tools) ? item.tools.join(', ') : (item.tools || ''),
+      coursework: item.coursework || '',
+      deliverables: Array.isArray(item.deliverables) ? item.deliverables.join('\n') : (item.deliverables || ''),
+      sort_order: item.sort_order || 1,
+    });
+    setIsExpertiseModalOpen(true);
+  };
+
+  const handleSaveExpertise = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onAddExpertise || !onUpdateExpertise) return;
+    setExpertiseError(null);
+    setExpertiseSaving(true);
+    try {
+      const payload: Omit<ExpertiseItem, 'id'> = {
+        num: expertiseForm.num.trim(),
+        title: expertiseForm.title.trim(),
+        category: expertiseForm.category,
+        icon: expertiseForm.icon.trim(),
+        summary: expertiseForm.summary.trim(),
+        details: expertiseForm.details.trim(),
+        tags: expertiseForm.tags.split(',').map((s) => s.trim()).filter(Boolean),
+        tools: expertiseForm.tools.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+        coursework: expertiseForm.coursework.trim(),
+        deliverables: expertiseForm.deliverables.split('\n').map((s) => s.trim()).filter(Boolean),
+        sort_order: Number(expertiseForm.sort_order) || 1,
+      };
+
+      if (editingExpertiseId) {
+        await onUpdateExpertise(editingExpertiseId, payload);
+      } else {
+        await onAddExpertise(payload);
+      }
+      setIsExpertiseModalOpen(false);
+    } catch (err: any) {
+      setExpertiseError(err?.message || 'Unable to save expertise domain.');
+    } finally {
+      setExpertiseSaving(false);
+    }
+  };
+
+
   // Testimonial Modal Actions
   const handleSaveTestimonial = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -472,34 +659,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </div>
           ) : (
             <form onSubmit={handleAuthSubmit} className="space-y-4">
-              <div className="flex rounded-xl bg-[#FDF2F6] p-1 border border-rose-200 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setAuthMode('signin')}
-                  className={`flex-1 py-2 rounded-lg font-semibold transition-colors ${
-                    authMode === 'signin'
-                      ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-sm'
-                      : 'text-[#5C3A4D] hover:text-[#2B1421]'
-                  }`}
-                >
-                  Admin Sign In
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthMode('register')}
-                  className={`flex-1 py-2 rounded-lg font-semibold transition-colors ${
-                    authMode === 'register'
-                      ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-sm'
-                      : 'text-[#5C3A4D] hover:text-[#2B1421]'
-                  }`}
-                >
-                  Create Admin
-                </button>
+              <div className="rounded-xl bg-[#FDF2F6] p-3 border border-rose-200 text-center">
+                <div className="text-xs font-bold text-[#2B1421]">Administrator Sign In</div>
+                <div className="text-[11px] text-[#5C3A4D] mt-0.5">
+                  Strict Role-Based Access: Enter authorized credentials to manage the portfolio.
+                </div>
               </div>
 
               {authError && (
-                <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-800 flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
+                <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-800 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
                   <span>{authError}</span>
                 </div>
               )}
@@ -538,20 +707,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <button
                 type="submit"
                 disabled={authLoading}
-                className="w-full rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 py-3 text-xs font-bold text-white hover:from-rose-700 hover:to-pink-700 transition-colors shadow-lg shadow-rose-500/20 disabled:opacity-50"
+                className="w-full rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 py-3 text-xs font-bold text-white hover:from-rose-700 hover:to-pink-700 transition-colors shadow-lg shadow-rose-500/20 disabled:opacity-50 cursor-pointer"
               >
-                {authLoading
-                  ? 'Verifying Credentials...'
-                  : authMode === 'signin'
-                  ? 'Sign In to Admin Portal'
-                  : 'Register Admin Account'}
+                {authLoading ? 'Verifying Credentials...' : 'Sign In to Admin Portal'}
               </button>
 
               <div className="pt-2 text-center">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="text-xs text-[#6D475B] hover:text-rose-700 transition-colors"
+                  className="text-xs text-[#6D475B] hover:text-rose-700 transition-colors cursor-pointer"
                 >
                   ← Return to Portfolio Website
                 </button>
@@ -572,6 +737,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   }[] = [
     { id: 'overview', label: 'Overview Dashboard', Icon: LayoutDashboard },
     { id: 'projects', label: 'Projects & Reels', Icon: FolderKanban, badge: projects.length },
+    { id: 'expertise', label: 'Skills & Expertise', Icon: Sparkles, badge: expertise.length },
+    { id: 'skills', label: 'Software Stack', Icon: Award, badge: skills.length },
     {
       id: 'inquiries',
       label: 'Hiring & Inquiries',
@@ -579,10 +746,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       badge: inquiries.length,
       highlightBadge: inquiries.filter((i) => i.status === 'new').length > 0,
     },
-    { id: 'skills', label: 'Skills & Stack', Icon: Award, badge: skills.length },
     { id: 'testimonials', label: 'Client Endorsements', Icon: MessageSquare, badge: testimonials.length },
     { id: 'settings', label: 'Security & Settings', Icon: Settings },
   ];
+
 
   // --- FULL-SCREEN DEDICATED ADMIN PORTAL ---
   return (
@@ -642,7 +809,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <div className="p-4 border-t border-white/10 bg-black/20 space-y-3">
           <div className="flex items-center justify-between text-xs">
             <div className="truncate pr-2">
-              <p className="font-bold text-white truncate">{currentUser.email}</p>
+              <p className="font-bold text-white truncate">{currentUser?.email || 'Administrator'}</p>
               <span className="text-[10px] text-emerald-300 font-mono">RBAC Verified</span>
             </div>
             <button
@@ -678,8 +845,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             <h1 className="font-display text-base font-bold text-[#2B1421]">
               {activeScreen === 'overview' && 'Studio Analytics & System Overview'}
               {activeScreen === 'projects' && 'Projects & Video Reels Catalog'}
-              {activeScreen === 'inquiries' && 'Client Inquiries & Hiring Proposals'}
+              {activeScreen === 'expertise' && 'Skills & Expertise Domains (Competencies)'}
               {activeScreen === 'skills' && 'Skills, Icons & Qualification Details'}
+              {activeScreen === 'inquiries' && 'Client Inquiries & Hiring Proposals'}
               {activeScreen === 'testimonials' && 'Client Testimonials & Feedback'}
               {activeScreen === 'settings' && 'Admin Credentials & Cloud Configuration'}
             </h1>
@@ -696,20 +864,30 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             {activeScreen === 'projects' && (
               <button
                 onClick={openNewProjectModal}
-                className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 px-3.5 py-1.5 text-xs font-bold text-white hover:from-rose-700 hover:to-pink-700 transition-colors shadow-sm"
+                className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 px-3.5 py-1.5 text-xs font-bold text-white hover:from-rose-700 hover:to-pink-700 transition-colors shadow-sm cursor-pointer"
               >
                 <Plus className="h-4 w-4" /> Add Project
+              </button>
+            )}
+
+            {activeScreen === 'expertise' && (
+              <button
+                onClick={openNewExpertiseModal}
+                className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 px-3.5 py-1.5 text-xs font-bold text-white hover:from-rose-700 hover:to-pink-700 transition-colors shadow-sm cursor-pointer"
+              >
+                <Plus className="h-4 w-4" /> Add Expertise
               </button>
             )}
 
             {activeScreen === 'skills' && (
               <button
                 onClick={openNewSkillModal}
-                className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 px-3.5 py-1.5 text-xs font-bold text-white hover:from-rose-700 hover:to-pink-700 transition-colors shadow-sm"
+                className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 px-3.5 py-1.5 text-xs font-bold text-white hover:from-rose-700 hover:to-pink-700 transition-colors shadow-sm cursor-pointer"
               >
                 <Plus className="h-4 w-4" /> Add Skill
               </button>
             )}
+
 
             {activeScreen === 'testimonials' && (
               <button
@@ -1075,16 +1253,130 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </div>
           )}
 
-          {/* SCREEN 4: SKILLS & QUALIFICATIONS (WITH ICONS + DETAILS) */}
-          {activeScreen === 'skills' && (
+          {/* SCREEN: SKILLS & EXPERTISE (CORE COMPETENCIES & DOMAIN BREAKDOWNS) */}
+          {activeScreen === 'expertise' && (
             <div className="space-y-6">
-              <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-rose-200/80">
                 <div>
-                  <h3 className="text-sm font-bold text-[#2B1421]">Software Mastery, Skill Icons & Workflow Details</h3>
+                  <h3 className="text-sm font-bold text-[#2B1421]">Skills &amp; Expertise Domains (Competencies)</h3>
                   <p className="text-xs text-[#6D475B] mt-0.5">
-                    Add or edit skill icons and detailed capability descriptions — changes sync immediately to the portfolio website.
+                    Manage core disciplines, tangible client deliverables, software workflows, and detail screens displayed on the portfolio.
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={openNewExpertiseModal}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:from-rose-700 hover:to-pink-700 transition-all cursor-pointer"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Add New Expertise Domain</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {expertise.map((exp) => (
+                  <div
+                    key={exp.id}
+                    className="p-5 rounded-2xl border border-rose-200/80 bg-white flex flex-col justify-between gap-4 shadow-2xs hover:border-rose-300 transition-colors"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <span className="font-mono text-xs font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                            {exp.num || '00'}
+                          </span>
+                          <span className="rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 text-[10px] text-rose-700 uppercase font-semibold">
+                            {exp.category}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-[#6D475B] font-mono">
+                          {exp.deliverables?.length || 0} Deliverables
+                        </span>
+                      </div>
+
+                      <div>
+                        <h4 className="font-display text-sm font-bold text-[#2B1421]">{exp.title}</h4>
+                        <p className="text-xs text-[#5C3A4D] mt-1 leading-relaxed line-clamp-2">
+                          {exp.summary}
+                        </p>
+                      </div>
+
+                      {exp.deliverables && exp.deliverables.length > 0 && (
+                        <div className="p-2.5 rounded-xl bg-[#FFF9FB] border border-rose-100 text-[11px] text-[#5C3A4D] space-y-1">
+                          <span className="font-semibold text-[#2B1421] block">Key Output Deliverables:</span>
+                          <ul className="list-disc list-inside space-y-0.5 text-[11px]">
+                            {exp.deliverables.slice(0, 2).map((d, i) => (
+                              <li key={i} className="truncate">{d}</li>
+                            ))}
+                            {exp.deliverables.length > 2 && (
+                              <li className="text-rose-600 font-medium">+{exp.deliverables.length - 2} more...</li>
+                            )}
+                          </ul>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-1">
+                        {exp.tags?.slice(0, 3).map((t) => (
+                          <span key={t} className="px-2 py-0.5 rounded-md bg-rose-50 text-[10px] font-mono text-rose-700">
+                            #{t}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-3 border-t border-rose-100">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewingExpertise(exp)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition-colors cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Preview Detail Screen</span>
+                      </button>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEditExpertiseModal(exp)}
+                          className="rounded-lg p-2 text-[#6D475B] hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
+                          title="Edit Expertise"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDeleteExpertise && onDeleteExpertise(exp.id)}
+                          className="rounded-lg p-2 text-[#6D475B] hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
+                          title="Delete Expertise"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* SCREEN 4: SKILLS & QUALIFICATIONS (WITH OFFICIAL APP LOGOS + DETAILS) */}
+          {activeScreen === 'skills' && (
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-rose-200/80">
+                <div>
+                  <h3 className="text-sm font-bold text-[#2B1421]">Production Stack &amp; Software Mastery</h3>
+                  <p className="text-xs text-[#6D475B] mt-0.5">
+                    Add, edit, or delete software tools with official app logos — updates dynamically on the live portfolio.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openNewSkillModal}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:from-rose-700 hover:to-pink-700 transition-all cursor-pointer"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Add New Software Tool</span>
+                </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1095,8 +1387,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     className="p-5 rounded-2xl border border-rose-200/80 bg-white flex items-start justify-between gap-4 shadow-2xs hover:border-rose-300 transition-colors"
                   >
                     <div className="flex items-start gap-3.5 flex-1 min-w-0">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-rose-100 to-pink-100 text-rose-700 border border-rose-200">
-                        <SkillIcon icon={s.icon} category={s.category} className="h-5 w-5" />
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl overflow-hidden shadow-xs">
+                        <SkillIcon icon={s.icon} name={s.name} category={s.category} className="h-12 w-12" />
                       </div>
 
                       <div className="flex-1 min-w-0 space-y-2">
@@ -1219,7 +1511,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <div>
                   <h3 className="font-display text-sm font-bold text-[#2B1421]">Current Admin Account</h3>
                   <p className="text-xs text-[#6D475B] mt-0.5">
-                    Logged in as: <strong className="text-rose-700 font-mono">{currentUser.email}</strong> (UID: {currentUser.uid})
+                    Logged in as: <strong className="text-rose-700 font-mono">{currentUser?.email || 'Administrator'}</strong> (UID: {currentUser?.uid || '—'})
                   </p>
                 </div>
 
@@ -1270,28 +1562,122 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </div>
                 </form>
 
-                <form onSubmit={handleAddAdminEmail} className="space-y-3 pt-3 border-t border-rose-100">
-                  <label className="block text-xs font-semibold text-[#3E1D2F]">
-                    Grant Role-Based Admin Access to Another Email
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="email"
-                      required
-                      placeholder="co-admin@gmail.com"
-                      value={newAdminEmail}
-                      onChange={(e) => setNewAdminEmail(e.target.value)}
-                      className="flex-1 rounded-xl border border-rose-200 bg-[#FFF9FB] p-2.5 text-xs text-[#2B1421] focus:border-rose-500 focus:outline-none"
-                    />
+                {/* DYNAMIC STUDIO ADMINISTRATOR MANAGEMENT */}
+                <div className="pt-5 border-t border-rose-100 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-display text-sm font-bold text-[#2B1421]">
+                        Authorized Studio Administrators
+                      </h4>
+                      <p className="text-xs text-[#6D475B]">
+                        Authorized admins can open this portal by holding the website logo for 10 seconds.
+                      </p>
+                    </div>
                     <button
-                      type="submit"
-                      disabled={settingsLoading}
-                      className="rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 px-4 py-2.5 text-xs font-bold text-white hover:from-rose-700 hover:to-pink-700 transition-colors disabled:opacity-50"
+                      type="button"
+                      onClick={loadAdmins}
+                      disabled={adminListLoading}
+                      className="text-xs font-semibold text-rose-600 hover:text-rose-800 transition-colors"
                     >
-                      Grant Role
+                      {adminListLoading ? 'Refreshing...' : 'Refresh List'}
                     </button>
                   </div>
-                </form>
+
+                  {/* Add New Admin Email */}
+                  <form onSubmit={handleAddAdminEmail} className="space-y-2">
+                    <label className="block text-xs font-semibold text-[#3E1D2F]">
+                      Grant Role-Based Admin Access to Another Email
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        required
+                        placeholder="new-admin@gmail.com"
+                        value={newAdminEmail}
+                        onChange={(e) => setNewAdminEmail(e.target.value)}
+                        className="flex-1 rounded-xl border border-rose-200 bg-[#FFF9FB] p-2.5 text-xs text-[#2B1421] focus:border-rose-500 focus:outline-none"
+                      />
+                      <button
+                        type="submit"
+                        disabled={settingsLoading}
+                        className="rounded-xl bg-[#111318] hover:bg-[#FF6900] px-4 py-2.5 text-xs font-bold text-white transition-colors disabled:opacity-50 shrink-0"
+                      >
+                        {settingsLoading ? 'Saving...' : 'Grant Role'}
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* List of Active Administrators */}
+                  <div className="space-y-2 pt-2">
+                    <div className="flex items-center justify-between text-xs font-semibold text-[#717684]">
+                      <span>Active Studio Administrators ({adminList.length})</span>
+                      <span className="text-[11px] font-mono text-[#A89CA2]">Strict RBAC</span>
+                    </div>
+
+                    <div className="divide-y divide-rose-100 rounded-xl border border-rose-200 overflow-hidden bg-[#FAF8F5]">
+                      {adminList.map((admin) => {
+                        const emailStr = (admin.email || '').toLowerCase().trim();
+                        const currentEmailStr = (currentUser?.email || '').toLowerCase().trim();
+                        const isCurrent = Boolean(emailStr && currentEmailStr && emailStr === currentEmailStr);
+                        const isPrimary = emailStr === 'munazza.00077@gmail.com';
+                        const initials = (emailStr || 'AD').substring(0, 2).toUpperCase();
+                        let dateStr = '';
+                        if (admin.created_at) {
+                          try {
+                            const d = new Date(admin.created_at);
+                            if (!isNaN(d.getTime())) {
+                              dateStr = '• Added ' + d.toLocaleDateString();
+                            }
+                          } catch {}
+                        }
+                        return (
+                          <div
+                            key={admin.id || admin.email}
+                            className="flex items-center justify-between p-3 text-xs bg-white hover:bg-rose-50/40 transition-colors gap-2"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-full bg-[#111318] text-white flex items-center justify-center font-bold text-xs shrink-0">
+                                {initials}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-semibold text-[#111318] truncate">
+                                    {admin.email || 'Authorized Admin'}
+                                  </span>
+                                  {isCurrent && (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 shrink-0">
+                                      You
+                                    </span>
+                                  )}
+                                  {isPrimary && (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#FF6900]/10 text-[#FF6900] shrink-0">
+                                      Owner
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-[#717684] flex items-center gap-2 mt-0.5">
+                                  <span className="capitalize">{admin.role === 'superadmin' ? 'Super Admin' : 'Studio Administrator'}</span>
+                                  {dateStr && <span>{dateStr}</span>}
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRevokeAdmin(admin)}
+                              disabled={settingsLoading}
+                              className="px-3 py-1.5 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-100 hover:border-rose-300 text-xs font-semibold transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                              title={`Remove ${admin.email} from administrators`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -1444,20 +1830,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         </div>
       )}
 
-      {/* SKILL MODAL WITH VISUAL ICON PICKER + RICH DETAILS */}
+      {/* SKILL MODAL WITH APP LOGO PICKER + RICH DETAILS */}
       {isSkillModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#2B1421]/70 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-rose-100">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-100 text-rose-700">
-                  <SkillIcon icon={skillForm.icon} category={skillForm.category} className="h-4 w-4" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden shadow-xs">
+                  <SkillIcon icon={skillForm.icon} name={skillForm.name} category={skillForm.category} className="h-9 w-9" />
                 </div>
-                <h3 className="font-display text-sm font-bold text-[#2B1421]">
-                  {editingSkillId ? 'Edit Qualification & Icon' : 'Add New Skill with Icon & Details'}
-                </h3>
+                <div>
+                  <h3 className="font-display text-sm font-bold text-[#2B1421]">
+                    {editingSkillId ? 'Edit Software Tool & Logo' : 'Add New Software Tool & Logo'}
+                  </h3>
+                  <span className="text-[10px] text-[#6D475B]">Dynamic production stack configuration</span>
+                </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsSkillModalOpen(false)}
                 className="rounded-lg p-1 text-[#6D475B] hover:text-[#2B1421]"
               >
@@ -1475,7 +1865,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             <form onSubmit={handleSaveSkill} className="space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-[#3E1D2F] mb-1">Software / Skill Name *</label>
+                  <label className="block font-semibold text-[#3E1D2F] mb-1">Software / Tool Name *</label>
                   <input
                     type="text"
                     required
@@ -1507,32 +1897,44 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
               </div>
 
-              {/* Visual Icon Picker */}
+              {/* Official App Logo Picker */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="font-semibold text-[#3E1D2F]">Select Skill Icon</label>
-                  <span className="text-[11px] font-mono text-rose-700">Selected: {skillForm.icon}</span>
+                  <label className="font-semibold text-[#3E1D2F]">Select Official App Logo</label>
+                  <span className="text-[11px] font-mono text-rose-700">Current: {skillForm.icon}</span>
                 </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {SKILL_ICON_OPTIONS.map(({ key, label, Icon }) => {
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-52 overflow-y-auto p-1.5 border border-rose-100 rounded-xl bg-[#FFF9FB]">
+                  {APP_LOGO_OPTIONS.map(({ key, label }) => {
                     const selected = skillForm.icon === key;
                     return (
                       <button
                         key={key}
                         type="button"
-                        data-icon-option={key}
-                        onClick={() => setSkillForm({ ...skillForm, icon: key })}
-                        className={`flex flex-col items-center justify-center gap-1 rounded-xl border p-2.5 text-[10px] font-semibold transition-all ${
+                        onClick={() => setSkillForm({ ...skillForm, icon: key as any })}
+                        className={`flex flex-col items-center justify-center gap-1 rounded-xl border p-2 text-[10px] font-semibold transition-all ${
                           selected
-                            ? 'border-rose-600 bg-rose-50 text-rose-800 ring-2 ring-rose-500/25'
-                            : 'border-rose-200/80 bg-[#FFF9FB] text-[#5C3A4D] hover:border-rose-400 hover:bg-white'
+                            ? 'border-rose-600 bg-rose-50 text-rose-900 ring-2 ring-rose-500/25'
+                            : 'border-rose-200/80 bg-white text-[#5C3A4D] hover:border-rose-400 hover:bg-rose-50/50'
                         }`}
                       >
-                        <Icon className={`h-4 w-4 ${selected ? 'text-rose-600' : 'text-[#6D475B]'}`} />
-                        <span className="truncate max-w-full">{label}</span>
+                        <SkillIcon icon={key} name={label} className="h-7 w-7" />
+                        <span className="truncate max-w-full text-center text-[10px]">{label}</span>
                       </button>
                     );
                   })}
+                </div>
+
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Or enter custom icon key or image URL (https://...)"
+                    value={skillForm.icon}
+                    onChange={(e) => setSkillForm({ ...skillForm, icon: e.target.value as any })}
+                    className="flex-1 rounded-xl border border-rose-200 bg-[#FFF9FB] p-2 text-xs text-[#2B1421] focus:border-rose-500 focus:outline-none font-mono"
+                  />
+                  <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0 border border-rose-200 bg-white">
+                    <SkillIcon icon={skillForm.icon} name={skillForm.name} className="w-6 h-6" />
+                  </div>
                 </div>
               </div>
 
@@ -1593,6 +1995,231 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* EXPERTISE DOMAIN MODAL (CORE COMPETENCIES & DETAIL SCREENS) */}
+      {isExpertiseModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#2B1421]/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-rose-100">
+              <div>
+                <h3 className="font-display text-sm font-bold text-[#2B1421]">
+                  {editingExpertiseId ? 'Edit Skills & Expertise Domain' : 'Add New Expertise Domain'}
+                </h3>
+                <span className="text-[10px] text-[#6D475B]">
+                  Configures the card and rich detail screen displayed on the portfolio
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExpertiseModalOpen(false)}
+                className="rounded-lg p-1 text-[#6D475B] hover:text-[#2B1421]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {expertiseError && (
+              <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-800 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
+                <span>{expertiseError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveExpertise} className="space-y-4 text-xs">
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold text-[#3E1D2F] mb-1">Index Code / Num *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 01, 02"
+                    value={expertiseForm.num}
+                    onChange={(e) => setExpertiseForm({ ...expertiseForm, num: e.target.value })}
+                    className="w-full rounded-xl border border-rose-200 bg-[#FFF9FB] p-2.5 text-xs text-[#2B1421] focus:border-rose-500 focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[#3E1D2F] mb-1">Category *</label>
+                  <select
+                    value={expertiseForm.category}
+                    onChange={(e) =>
+                      setExpertiseForm({ ...expertiseForm, category: e.target.value as ExpertiseItem['category'] })
+                    }
+                    className="w-full rounded-xl border border-rose-200 bg-[#FFF9FB] p-2.5 text-xs text-[#2B1421] focus:border-rose-500 focus:outline-none"
+                  >
+                    <option value="office">MS Office &amp; Operations</option>
+                    <option value="design">Graphic Design &amp; Branding</option>
+                    <option value="video">Video Editing &amp; Motion</option>
+                    <option value="it">IT Support &amp; Systems</option>
+                    <option value="research">Internet &amp; Academic Research</option>
+                    <option value="collaboration">Online Team Collaboration</option>
+                    <option value="ai">AI Fundamentals &amp; Automation</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[#3E1D2F] mb-1">Sort Order</label>
+                  <input
+                    type="number"
+                    value={expertiseForm.sort_order}
+                    onChange={(e) => setExpertiseForm({ ...expertiseForm, sort_order: Number(e.target.value) })}
+                    className="w-full rounded-xl border border-rose-200 bg-[#FFF9FB] p-2.5 text-xs text-[#2B1421] focus:border-rose-500 focus:outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#3E1D2F] mb-1">Discipline / Competency Title *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Graphic Design & Visual Branding"
+                  value={expertiseForm.title}
+                  onChange={(e) => setExpertiseForm({ ...expertiseForm, title: e.target.value })}
+                  className="w-full rounded-xl border border-rose-200 bg-[#FFF9FB] p-2.5 text-xs text-[#2B1421] focus:border-rose-500 focus:outline-none font-semibold"
+                />
+              </div>
+
+              {/* Icon Key Selector */}
+              <div>
+                <label className="block font-semibold text-[#3E1D2F] mb-1.5">Category Icon *</label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { key: 'palette', label: 'Palette (Design)' },
+                    { key: 'film', label: 'Film (Video)' },
+                    { key: 'file-text', label: 'Document (Office)' },
+                    { key: 'cpu', label: 'CPU (IT Systems)' },
+                    { key: 'globe', label: 'Globe (Research)' },
+                    { key: 'users', label: 'Users (Collab)' },
+                    { key: 'brain', label: 'Brain (AI)' },
+                  ].map((ic) => (
+                    <button
+                      key={ic.key}
+                      type="button"
+                      onClick={() => setExpertiseForm({ ...expertiseForm, icon: ic.key })}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-medium cursor-pointer transition-colors ${
+                        expertiseForm.icon === ic.key
+                          ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                          : 'bg-white text-[#5C3A4D] border-rose-200 hover:bg-rose-50'
+                      }`}
+                    >
+                      {ic.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#3E1D2F] mb-1">
+                  Card Summary Overview (Shown on Portfolio Card) *
+                </label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="Short 2-sentence summary of the discipline..."
+                  value={expertiseForm.summary}
+                  onChange={(e) => setExpertiseForm({ ...expertiseForm, summary: e.target.value })}
+                  className="w-full rounded-xl border border-rose-200 bg-[#FFF9FB] p-2.5 text-xs text-[#2B1421] focus:border-rose-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#3E1D2F] mb-1">
+                  Scope &amp; Practical Methodology Details (Shown in Detail Screen Modal) *
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  placeholder="In-depth multi-paragraph description of practical techniques, client outcomes, and methodology..."
+                  value={expertiseForm.details}
+                  onChange={(e) => setExpertiseForm({ ...expertiseForm, details: e.target.value })}
+                  className="w-full rounded-xl border border-rose-200 bg-[#FFF9FB] p-2.5 text-xs text-[#2B1421] focus:border-rose-500 focus:outline-none leading-relaxed"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#3E1D2F] mb-1">
+                  Tangible Deliverables &amp; Client Output (One deliverable per line)
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder={`Cohesive social media feed carousels and story kits\nHigh-resolution tri-fold brochures and event flyers\nLuxury stationery mockups and vector filigree emblems`}
+                  value={expertiseForm.deliverables}
+                  onChange={(e) => setExpertiseForm({ ...expertiseForm, deliverables: e.target.value })}
+                  className="w-full rounded-xl border border-rose-200 bg-[#FFF9FB] p-2.5 text-xs text-[#2B1421] focus:border-rose-500 focus:outline-none font-mono"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-[#3E1D2F] mb-1">
+                    Software Stack Used (Comma separated)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. canva, photoshop, illustrator"
+                    value={expertiseForm.tools}
+                    onChange={(e) => setExpertiseForm({ ...expertiseForm, tools: e.target.value })}
+                    className="w-full rounded-xl border border-rose-200 bg-[#FFF9FB] p-2.5 text-xs text-[#2B1421] focus:border-rose-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[#3E1D2F] mb-1">
+                    Capability Tags (Comma separated)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Canva Pro, Photoshop, Branding"
+                    value={expertiseForm.tags}
+                    onChange={(e) => setExpertiseForm({ ...expertiseForm, tags: e.target.value })}
+                    className="w-full rounded-xl border border-rose-200 bg-[#FFF9FB] p-2.5 text-xs text-[#2B1421] focus:border-rose-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#3E1D2F] mb-1">
+                  Practical Coursework &amp; Academic Training Context
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Certified via 6-Month Intensive IT & Creative Diploma with distinction..."
+                  value={expertiseForm.coursework}
+                  onChange={(e) => setExpertiseForm({ ...expertiseForm, coursework: e.target.value })}
+                  className="w-full rounded-xl border border-rose-200 bg-[#FFF9FB] p-2.5 text-xs text-[#2B1421] focus:border-rose-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-rose-100">
+                <button
+                  type="button"
+                  onClick={() => setIsExpertiseModalOpen(false)}
+                  className="rounded-xl border border-rose-200 bg-white px-4 py-2 font-semibold text-[#6D475B] hover:text-[#2B1421]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={expertiseSaving}
+                  className="rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 px-5 py-2 font-bold text-white hover:from-rose-700 hover:to-pink-700 disabled:opacity-50 cursor-pointer"
+                >
+                  {expertiseSaving ? 'Saving...' : 'Save Expertise Domain'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DETAIL MODAL PREVIEW FOR ADMIN */}
+      {previewingExpertise && (
+        <ExpertiseDetailModal
+          expertise={previewingExpertise}
+          onClose={() => setPreviewingExpertise(null)}
+        />
       )}
 
       {/* TESTIMONIAL MODAL */}

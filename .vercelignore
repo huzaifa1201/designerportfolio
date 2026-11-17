@@ -1,0 +1,9 @@
+.git
+.github
+.gemini
+data/*.db-shm
+data/*.db-wal
+*.test.ts
+*.test.tsx
+.env*.local
+From Klickpin*.mp4

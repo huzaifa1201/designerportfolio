@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+.vercel
+data/*.db-shm
+data/*.db-wal
+From Klickpin*.mp4
+

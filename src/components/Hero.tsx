@@ -1,362 +1,486 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, Pause, Play, Volume2, VolumeX } from 'lucide-react';
-import { PortfolioStats, Project } from '../types';
+import React from 'react';
+import { Play, ArrowUpRight } from 'lucide-react';
+import { PortfolioStats, SkillItem } from '../types';
+
 
 interface HeroProps {
   stats: PortfolioStats | null;
-  projects?: Project[];
-  onSelectProject?: (project: Project) => void;
-  onViewCV: () => void;
+  skills?: SkillItem[];
+  onViewCV?: () => void;
 }
 
-const DEFAULT_REELS = [
-  {
-    title: 'Capital Smart City Editorial',
-    subtitle: 'Architectural Motion · 9:16',
-    url: '/assets/aistudio/1_Kanal_Residential_Plot___Housing_Development_bea26688.mp4',
-  },
-  {
-    title: '3-Split Villa Showcase',
-    subtitle: 'Editorial Pacing · 9:16',
-    url: '/assets/aistudio/Real_Estate_Showcase_1dc50f40.mp4',
-  },
-  {
-    title: 'Eastern Housing Brand Film',
-    subtitle: 'Corporate Story · 9:16',
-    url: '/assets/aistudio/On-Site_Building_Construction_Progress_9f6d1756.mp4',
-  },
-];
-
-const CLIENT_WORDMARKS = [
-  'EASTERN HOUSING',
-  'CAPITAL SMART CITY',
-  'BURGER LAB',
-  'GLOBEX SOLUTIONS',
-  'AL-JANNAT ATELIER',
-  'CODEMIND STUDIO',
-];
-
-export const Hero: React.FC<HeroProps> = ({
-  projects = [],
-  onSelectProject,
-}) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [isMuted, setIsMuted] = useState(true);
-  const [activeReelIdx, setActiveReelIdx] = useState(0);
-
-  const heroReels = useMemo(() => {
-    const dbReels = projects.filter((p) => p.media_type === 'video');
-    if (dbReels.length > 0) {
-      return dbReels.slice(0, 3).map((r) => ({
-        title: r.client_or_brand,
-        subtitle: r.title,
-        url: r.media_url,
-      }));
-    }
-    return DEFAULT_REELS;
-  }, [projects]);
-
-  const silkCardProject = useMemo(
-    () =>
-      projects.find((p) => p.slug === 'munazza-irfan-luxury-business-card') ||
-      projects.find((p) => p.media_type === 'image'),
-    [projects]
-  );
-
-  const crestProject = useMemo(
-    () =>
-      projects.find((p) => p.slug === 'boutique-vintage-crest-logo') ||
-      projects.filter((p) => p.media_type === 'image')[1],
-    [projects]
-  );
-
-  const activeReel = heroReels[activeReelIdx] || DEFAULT_REELS[0];
-
-  const handleTogglePlay = () => {
-    if (!videoRef.current) return;
-    if (videoRef.current.paused) {
-      videoRef.current.play().catch(() => {});
-      setIsPlaying(true);
-    } else {
-      videoRef.current.pause();
-      setIsPlaying(false);
-    }
-  };
-
-  const handleToggleMute = () => {
-    if (!videoRef.current) return;
-    videoRef.current.muted = !videoRef.current.muted;
-    setIsMuted(videoRef.current.muted);
-  };
-
-  const handlePlayShowreelCTA = () => {
-    if (videoRef.current) {
-      videoRef.current.muted = false;
-      setIsMuted(false);
-      videoRef.current.play().catch(() => {});
-      setIsPlaying(true);
-    }
-    const reelsSection = document.getElementById('reels');
-    if (reelsSection) {
-      reelsSection.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
-  const handleInspectProject = (project?: Project) => {
-    if (project && onSelectProject) {
-      onSelectProject(project);
-    } else {
-      const workEl = document.getElementById('work');
-      if (workEl) workEl.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
+export const Hero: React.FC<HeroProps> = ({ stats, skills = [], onViewCV }) => {
+  const totalSkillsCount = skills.length > 0 ? skills.length : 7;
 
   return (
     <section
+      className="relative z-10 w-full pt-16 sm:pt-24 pb-12 lg:pt-28 lg:pb-16 overflow-hidden bg-[#FAF8F5]"
       id="home"
-      className="relative overflow-hidden bg-[#FAF8F5] pt-8 pb-12 sm:pt-12 sm:pb-14 lg:pt-12 lg:pb-16"
     >
-      {/* Subtle Ambient Champagne Gold & Velvet Terracotta Atmospheric Glow */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-24 right-[8%] h-[460px] w-[460px] rounded-full bg-[#C5A880]/15 blur-[130px]"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute bottom-10 -left-24 h-[360px] w-[360px] rounded-full bg-[#C47D68]/10 blur-[120px]"
-      />
+      {/* =========================================================================
+          BACKGROUND LAYER: Category-Related Imagery, Watermark Collage & Radial Glow
+         ========================================================================= */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0 select-none">
+        {/* Warm radial glow spots */}
+        <div className="absolute w-[900px] h-[550px] bg-gradient-to-r from-[#FF6900]/12 via-[#FFF2E5]/80 to-[#FF6900]/8 rounded-full blur-[140px] -top-12 left-1/2 -translate-x-1/2" />
+        <div className="absolute w-[450px] h-[450px] bg-[#FF6900]/6 rounded-full blur-[110px] top-40 -left-20" />
+        <div className="absolute w-[450px] h-[450px] bg-[#3B82F6]/5 rounded-full blur-[110px] top-32 -right-20" />
 
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
-        {/* 2-Column Editorial Hero Split */}
-        <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-12 lg:gap-12">
-          {/* Hero Left Column: Breathable Parisian Typography */}
-          <div className="lg:col-span-6 xl:col-span-6">
-            {/* Chic Editorial Badge */}
-            <div className="inline-flex items-center rounded-full border border-[rgba(215,208,198,0.85)] bg-[#F5F0E8]/70 px-3 py-1.5 sm:px-4 text-[9px] sm:text-[11px] font-medium uppercase tracking-[0.11em] sm:tracking-[0.18em] text-[#5B524A] whitespace-nowrap">
-              PORTFOLIO 2026 • BESPOKE BRAND IDENTITY &amp; MOTION
+        {/* Ambient Category Watermark Panels (Softly blended into background) */}
+        <div className="absolute inset-0 max-w-[1600px] mx-auto opacity-[0.14] sm:opacity-[0.18] transition-opacity duration-700">
+          {/* Top-Left Category: Graphic Design / Filigree Crest */}
+          <div className="absolute -left-6 sm:left-4 lg:left-12 top-14 sm:top-20 w-40 sm:w-52 lg:w-64 rounded-2xl overflow-hidden border border-[#E8E5DF] shadow-lg -rotate-12 blur-[0.4px]">
+            <img
+              src="/assets/aistudio/Logo_12077448.jpg"
+              alt="Category Branding"
+              className="w-full h-auto object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#FAF8F5] via-transparent to-transparent" />
+          </div>
+
+          {/* Bottom-Left Category: Admissions University Poster */}
+          <div className="absolute left-2 sm:left-10 lg:left-20 top-[28rem] sm:top-[30rem] w-36 sm:w-48 lg:w-56 rounded-2xl overflow-hidden border border-[#E8E5DF] shadow-lg rotate-6 blur-[0.4px]">
+            <img
+              src="/assets/aistudio/Admissions_University_Poster_a1db8ec5.png"
+              alt="Category Posters"
+              className="w-full h-auto object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#FAF8F5] via-transparent to-transparent" />
+          </div>
+
+          {/* Top-Right Category: Burger Lab Social Media Banner */}
+          <div className="absolute -right-6 sm:right-4 lg:right-12 top-16 sm:top-24 w-40 sm:w-52 lg:w-64 rounded-2xl overflow-hidden border border-[#E8E5DF] shadow-lg rotate-12 blur-[0.4px]">
+            <img
+              src="/assets/aistudio/Burger_Food_Instagram_Post_f75f9144.png"
+              alt="Category Social Media"
+              className="w-full h-auto object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#FAF8F5] via-transparent to-transparent" />
+          </div>
+
+          {/* Bottom-Right Category: Corporate Web Banner */}
+          <div className="absolute right-2 sm:right-10 lg:right-20 top-[29rem] sm:top-[31rem] w-40 sm:w-56 lg:w-64 rounded-2xl overflow-hidden border border-[#E8E5DF] shadow-lg -rotate-6 blur-[0.4px]">
+            <img
+              src="/assets/aistudio/Website_Banner_53c790d7.png"
+              alt="Category IT & Web"
+              className="w-full h-auto object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#FAF8F5] via-transparent to-transparent" />
+          </div>
+        </div>
+
+        {/* Center Radial Vignette Mask (Ensures high contrast & sharp text readability) */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(250,248,245,0.85)_0%,rgba(250,248,245,0.65)_50%,rgba(250,248,245,0.95)_100%)]" />
+      </div>
+
+      {/* =========================================================================
+          DESKTOP FLOATING CATEGORY CARDS (Left & Right Flanks on Large Screens)
+         ========================================================================= */}
+      {/* LEFT FLANK: Graphic Design & Luxury Brand Identity */}
+      <div className="hidden xl:block absolute left-4 2xl:left-12 top-24 z-20 pointer-events-auto">
+        <div className="flex flex-col gap-6">
+          {/* Card 1: Logo & Monogram Crest */}
+          <a
+            href="#projects"
+            className="group block w-56 p-2.5 rounded-2xl bg-white/95 backdrop-blur-md border border-[#E8E5DF] shadow-[0_12px_32px_rgba(17,19,24,0.06)] hover:shadow-[0_16px_40px_rgba(255,105,0,0.12)] -rotate-6 hover:rotate-0 hover:scale-105 transition-all duration-300 animate-float-slow"
+          >
+            <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-[#FAF8F5] mb-2 border border-[#EAE6DF]">
+              <img
+                src="/assets/aistudio/Logo_12077448.jpg"
+                alt="Graphic Design & Crest"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              />
+              <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full bg-[#111318]/90 text-white font-mono text-[9px] uppercase tracking-wider font-semibold backdrop-blur-xs">
+                Design
+              </span>
+
             </div>
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <p className="font-bold text-[12px] text-[#111318] group-hover:text-[#FF6900] transition-colors leading-tight">
+                  A Boutique Crest
+                </p>
+                <p className="text-[10px] text-[#717684]">Luxury Monogram</p>
+              </div>
+              <ArrowUpRight className="w-3.5 h-3.5 text-[#717684] group-hover:text-[#FF6900] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+            </div>
+          </a>
 
-            {/* Main High-Fashion Serif Headline */}
-            <h1 className="mt-6 font-serif text-[42px] sm:text-5xl lg:text-[60px] xl:text-[66px] font-medium tracking-[-0.02em] text-[#181716] leading-[1.03] text-balance">
-              Crafting{' '}
-              <em className="italic font-normal text-[#C47D68]">Visual</em>{' '}
-              Identities That{' '}
-              <em className="italic font-normal text-[#A88659]">Command</em>{' '}
-              Attention.
+          {/* Card 2: Luxury Silk Business Card */}
+          <a
+            href="#projects"
+            className="group block w-52 p-2.5 rounded-2xl bg-white/95 backdrop-blur-md border border-[#E8E5DF] shadow-[0_12px_32px_rgba(17,19,24,0.06)] hover:shadow-[0_16px_40px_rgba(255,105,0,0.12)] rotate-3 hover:rotate-0 hover:scale-105 transition-all duration-300 animate-float-reverse ml-4"
+          >
+            <div className="relative w-full aspect-16/10 rounded-xl overflow-hidden bg-[#111318] mb-2 border border-[#EAE6DF]">
+              <img
+                src="/assets/aistudio/Business_card_b53b857b.png"
+                alt="Luxury Silk Stationery"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              />
+              <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full bg-black/85 text-[#FF6900] font-mono text-[9px] uppercase tracking-wider font-semibold backdrop-blur-xs">
+                Branding
+              </span>
+            </div>
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <p className="font-bold text-[12px] text-[#111318] group-hover:text-[#FF6900] transition-colors leading-tight">
+                  Black Silk Card
+                </p>
+                <p className="text-[10px] text-[#717684]">Brand Stationery</p>
+              </div>
+              <ArrowUpRight className="w-3.5 h-3.5 text-[#717684] group-hover:text-[#FF6900] transition-colors" />
+            </div>
+          </a>
+        </div>
+      </div>
+
+      {/* RIGHT FLANK: Video Reels & Print Marketing */}
+      <div className="hidden xl:block absolute right-4 2xl:right-12 top-24 z-20 pointer-events-auto">
+        <div className="flex flex-col gap-6 items-end">
+          {/* Card 3: 9:16 Video Drone Reel Preview */}
+          <a
+            href="#reels"
+            className="group block w-56 p-2.5 rounded-2xl bg-white/95 backdrop-blur-md border border-[#E8E5DF] shadow-[0_12px_32px_rgba(17,19,24,0.06)] hover:shadow-[0_16px_40px_rgba(255,105,0,0.12)] rotate-6 hover:rotate-0 hover:scale-105 transition-all duration-300 animate-float-reverse"
+          >
+            <div className="relative w-full aspect-9/12 rounded-xl overflow-hidden bg-[#111318] mb-2 border border-[#EAE6DF]">
+              <video
+                src="/assets/aistudio/1_Kanal_Residential_Plot___Housing_Development_bea26688.mp4"
+                muted
+                autoPlay
+                loop
+                playsInline
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              />
+              <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full bg-[#FF6900] text-white font-mono text-[9px] uppercase tracking-wider font-semibold backdrop-blur-xs">
+                9:16 Reel
+              </span>
+
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="w-9 h-9 rounded-full bg-black/60 backdrop-blur-xs border border-white/20 flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform">
+                  <Play className="w-4 h-4 fill-white ml-0.5" />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <p className="font-bold text-[12px] text-[#111318] group-hover:text-[#FF6900] transition-colors leading-tight">
+                  Capital Smart City
+                </p>
+                <p className="text-[10px] text-[#717684]">Drone Reel &bull; 0:28</p>
+              </div>
+              <ArrowUpRight className="w-3.5 h-3.5 text-[#717684] group-hover:text-[#FF6900] transition-colors" />
+            </div>
+          </a>
+
+          {/* Card 4: High-Conversion Tri-Fold Flyer / Poster */}
+          <a
+            href="#projects"
+            className="group block w-52 p-2.5 rounded-2xl bg-white/95 backdrop-blur-md border border-[#E8E5DF] shadow-[0_12px_32px_rgba(17,19,24,0.06)] hover:shadow-[0_16px_40px_rgba(255,105,0,0.12)] -rotate-3 hover:rotate-0 hover:scale-105 transition-all duration-300 animate-float-slow mr-4"
+          >
+            <div className="relative w-full aspect-16/11 rounded-xl overflow-hidden bg-[#FAF8F5] mb-2 border border-[#EAE6DF]">
+              <img
+                src="/assets/aistudio/Flyer_9744df9f.png"
+                alt="Tri-Fold Flyer"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              />
+              <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full bg-[#111318]/90 text-white font-mono text-[9px] uppercase tracking-wider font-semibold backdrop-blur-xs">
+                Flyers
+              </span>
+            </div>
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <p className="font-bold text-[12px] text-[#111318] group-hover:text-[#FF6900] transition-colors leading-tight">
+                  Digital Agency
+                </p>
+                <p className="text-[10px] text-[#717684]">Tri-Fold Marketing</p>
+              </div>
+              <ArrowUpRight className="w-3.5 h-3.5 text-[#717684] group-hover:text-[#FF6900] transition-colors" />
+            </div>
+          </a>
+        </div>
+      </div>
+
+      {/* =========================================================================
+          MAIN HERO CONTENT (Centered, Polished & Perfectly Readable)
+         ========================================================================= */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 relative z-10">
+        <div className="flex flex-col items-center justify-center text-center mx-auto max-w-4xl gap-5 sm:gap-6">
+          {/* Top Pill Announcement */}
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-[#E8E5DF] shadow-xs">
+            <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse shrink-0" />
+            <span className="font-mono text-[11px] sm:text-[12px] font-semibold text-[#111318]">
+              Available for Opportunities
+            </span>
+            <span className="text-[#D1CBC1]">•</span>
+            <span className="text-[11px] sm:text-[12px] text-[#FF6900] font-mono font-semibold shrink-0">
+              2026 Portfolio
+            </span>
+          </div>
+
+          {/* Headline Matching Stitch Reference */}
+          <div className="flex flex-col items-center text-center">
+            <h1 className="font-extrabold text-[32px] sm:text-[50px] lg:text-[66px] leading-[1.1] sm:leading-[1.08] tracking-[-0.03em] text-[#111318]">
+              Professional IT &amp;{' '}
+              <span className="italic font-normal font-editorial text-[#111318]">
+                Office Skills
+              </span>
+              <span className="block text-[#FF6900] underline decoration-[#FF6900]/30 underline-offset-4 sm:underline-offset-8 mt-1">
+                in one place.
+              </span>
             </h1>
 
-            {/* Refined 2-Sentence Bio */}
-            <p className="mt-5 max-w-lg text-[15px] sm:text-base leading-[1.7] tracking-[0.02em] text-[#575049]">
-              Munazza Irfan partners with luxury labels and growing ventures to craft bespoke brand stationery, signature emblems, and editorial visual systems. Every social campaign and short-form reel is art-directed for timeless poise and measurable audience conversion.
+            <p className="text-[15px] sm:text-[19px] font-semibold text-[#111318] mt-3 sm:mt-4 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
+              <span>Munazza Irfan</span>
+              <span className="text-[#D0CAC0]">•</span>
+              <span className="text-[#FF6900]">Graphic Designer</span>
+              <span className="text-[#D0CAC0]">•</span>
+              <span className="text-[#5A606D]">Video Editor</span>
             </p>
-
-            {/* Two Clean Pill Buttons */}
-            <div className="mt-8 flex flex-wrap items-center gap-4">
-              <a
-                href="#work"
-                className="inline-flex items-center gap-2.5 rounded-full bg-[#181716] px-7 py-3.5 text-xs sm:text-[13px] font-medium tracking-[0.04em] text-[#FAF8F5] shadow-[0_14px_30px_-10px_rgba(24,23,22,0.45)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#2E2B28] whitespace-nowrap"
-              >
-                <span>View Selected Works</span>
-                <ArrowUpRight className="h-4 w-4 text-[#C5A880]" />
-              </a>
-
-              <button
-                type="button"
-                onClick={handlePlayShowreelCTA}
-                className="inline-flex items-center gap-2.5 rounded-full border border-[#181716]/25 bg-transparent px-7 py-3.5 text-xs sm:text-[13px] font-medium tracking-[0.04em] text-[#181716] transition-all duration-200 hover:border-[#181716] hover:bg-[#181716]/5 whitespace-nowrap"
-              >
-                <span>Play Showreel ▷</span>
-              </button>
-            </div>
-
-            {/* Subtle Designer Discipline Index */}
-            <div className="mt-8 pt-5 border-t border-[rgba(215,208,198,0.45)] flex flex-wrap items-center gap-x-4 gap-y-2 text-xs tracking-[0.04em] text-[#6E655D]">
-              <span>Graphic Design</span>
-              <span aria-hidden="true" className="text-[#C5A880]">
-                /
-              </span>
-              <span>Brand Styling</span>
-              <span aria-hidden="true" className="text-[#C5A880]">
-                /
-              </span>
-              <span>Editorial Reels</span>
-              <span aria-hidden="true" className="text-[#C5A880]">
-                /
-              </span>
-              <span>Rawalpindi &amp; Global</span>
-            </div>
           </div>
 
-          {/* Hero Right Column: Floating 3D Glassmorphic Device + Layered Luxury Stationery */}
-          <div className="lg:col-span-6 xl:col-span-6 relative flex items-center justify-center py-4 lg:py-2 min-h-[460px] sm:min-h-[520px]">
-            {/* Layered Luxury Stationery Card (Top Left — non-occluding) */}
-            <button
-              type="button"
-              onClick={() => handleInspectProject(silkCardProject)}
-              aria-label="Inspect Executive Luxury Business Card"
-              className="hidden sm:block group absolute left-0 xl:-left-2 top-8 w-44 lg:w-48 -rotate-6 rounded-2xl border border-[#C5A880]/45 bg-[#181716] p-1.5 shadow-[0_28px_56px_-14px_rgba(24,23,22,0.32)] transition-all duration-300 hover:-translate-y-1.5 hover:-rotate-3 z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C5A880]"
-            >
-              <div className="overflow-hidden rounded-xl aspect-[16/10]">
-                <img
-                  src="/assets/aistudio/Business_Card__2__40af2b3d.png"
-                  alt="Munazza Irfan Executive Black Silk Business Card"
-                  referrerPolicy="no-referrer"
-                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-              </div>
-              <div className="px-2 py-1.5 flex items-center justify-between text-[10px] tracking-[0.06em] uppercase text-[#FAF8F5]/85">
-                <span>Silk Card</span>
-                <span className="text-[#C5A880]">01</span>
-              </div>
-            </button>
-
-            {/* Layered Luxury Crest Card (Top Right — cleanly offset so label stays 100% readable) */}
-            <button
-              type="button"
-              onClick={() => handleInspectProject(crestProject)}
-              aria-label="Inspect Boutique Vintage Crest Identity"
-              className="hidden sm:block group absolute right-0 xl:-right-2 top-16 w-36 lg:w-40 rotate-6 rounded-2xl border border-[rgba(215,208,198,0.7)] bg-white/95 backdrop-blur-xl p-1.5 shadow-[0_26px_52px_-12px_rgba(24,23,22,0.18)] transition-all duration-300 hover:-translate-y-1.5 hover:rotate-3 z-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C5A880]"
-            >
-              <div className="overflow-hidden rounded-xl aspect-square bg-[#F5F0E8]">
-                <img
-                  src="/assets/aistudio/Logo__2__63103627.jpg"
-                  alt="Boutique Vintage Fashion Filigree Crest"
-                  referrerPolicy="no-referrer"
-                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-              </div>
-              <div className="pt-1.5 px-1 flex items-center justify-between text-[10px] tracking-[0.05em] uppercase text-[#181716]/80">
-                <span>Atelier Crest</span>
-                <span className="text-[#C47D68]">02</span>
-              </div>
-            </button>
-
-            {/* Centerpiece: Floating 3D Glassmorphic iPhone 16 Pro Mockup */}
-            <div className="relative z-20 w-[256px] sm:w-[272px] rounded-[44px] border border-white/85 bg-gradient-to-b from-white/80 via-white/50 to-[#EAE3D8]/70 p-2 backdrop-blur-2xl shadow-[0_40px_80px_-18px_rgba(24,23,22,0.34),0_0_0_1px_rgba(197,168,128,0.35)]">
-              {/* Metallic Champagne Inner Frame */}
-              <div className="relative overflow-hidden rounded-[36px] bg-[#141312] ring-1 ring-black/15">
-                {/* iPhone 16 Pro Dynamic Island */}
-                <div className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 z-20 flex h-5 w-24 items-center justify-end rounded-full bg-black px-2.5 shadow-inner">
-                  <span className="h-2 w-2 rounded-full bg-[#1E1C1A] ring-1 ring-white/10" />
-                </div>
-
-                {/* Editorial Video Screen */}
-                <div className="relative aspect-[9/16] w-full overflow-hidden bg-[#181716]">
-                  <video
-                    ref={videoRef}
-                    key={activeReel.url}
-                    src={activeReel.url}
-                    autoPlay
-                    loop
-                    muted={isMuted}
-                    playsInline
-                    className="h-full w-full object-cover"
-                  />
-
-                  {/* Specular Glass Sheen */}
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/20"
-                  />
-
-                  {/* Subtle Contrast Scrim & Glass Controls */}
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#181716]/92 via-[#181716]/50 to-transparent p-3.5 pt-12">
-                    <div className="rounded-2xl border border-white/15 bg-black/40 backdrop-blur-md p-2.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <span className="block text-[9px] uppercase tracking-[0.14em] text-[#C5A880]">
-                            Editorial Reel 0{activeReelIdx + 1}
-                          </span>
-                          <p className="mt-0.5 truncate font-serif text-xs sm:text-sm font-medium text-[#FAF8F5]">
-                            {activeReel.title}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={handleTogglePlay}
-                            aria-label={isPlaying ? 'Pause showreel' : 'Play showreel'}
-                            className="flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-white/15 text-white transition-colors hover:bg-[#C5A880] hover:text-[#181716]"
-                          >
-                            {isPlaying ? (
-                              <Pause className="h-3 w-3" />
-                            ) : (
-                              <Play className="h-3 w-3" />
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleToggleMute}
-                            aria-label={isMuted ? 'Unmute showreel' : 'Mute showreel'}
-                            className="flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-white/15 text-white transition-colors hover:bg-[#C5A880] hover:text-[#181716]"
-                          >
-                            {isMuted ? (
-                              <VolumeX className="h-3 w-3" />
-                            ) : (
-                              <Volume2 className="h-3 w-3" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Minimalist Reel Selector */}
-                      <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2">
-                        <div className="flex items-center gap-1.5">
-                          {heroReels.map((r, idx) => (
-                            <button
-                              key={r.title + idx}
-                              type="button"
-                              onClick={() => setActiveReelIdx(idx)}
-                              aria-label={`Select reel ${idx + 1}: ${r.title}`}
-                              className={`h-1.5 rounded-full transition-all duration-200 ${
-                                idx === activeReelIdx
-                                  ? 'w-5 bg-[#C5A880]'
-                                  : 'w-1.5 bg-white/35 hover:bg-white/65'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <a
-                          href="#reels"
-                          className="text-[10px] tracking-[0.06em] uppercase text-[#FAF8F5]/85 hover:text-[#C5A880] transition-colors"
-                        >
-                          Full Theater
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Social Proof: Clean, Monochrome, Low-Opacity Logo Strip */}
-        <div className="mt-10 sm:mt-12 pt-6 border-t border-[rgba(215,208,198,0.4)]">
-          <p className="text-center text-[11px] font-medium uppercase tracking-[0.2em] text-[#181716]/45">
-            Trusted by Modern Brands &amp; Creators
+          {/* Introduction Copy */}
+          <p className="text-[14px] sm:text-[17px] leading-relaxed text-[#5A606D] max-w-2xl font-normal mx-auto px-2">
+            Motivated and detail-oriented professional with comprehensive training in MS Office,
+            graphic design, video editing, and IT support. Passionate about creating digital
+            content, solving technical problems, and learning new technologies.
           </p>
 
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-x-4 sm:gap-x-5 lg:gap-x-6 gap-y-2.5">
-            {CLIENT_WORDMARKS.map((brand, idx) => (
-              <React.Fragment key={brand}>
-                {idx > 0 && (
-                  <span
-                    aria-hidden="true"
-                    className="hidden lg:inline text-[#181716]/20"
-                  >
-                    /
-                  </span>
-                )}
-                <span className="font-serif text-[11px] sm:text-xs tracking-[0.1em] text-[#181716]/45 transition-colors duration-200 hover:text-[#181716]/85 cursor-default whitespace-nowrap">
-                  {brand}
+          {/* Action CTA Group */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2.5 sm:gap-3 pt-2 w-full max-w-md mx-auto">
+            <a
+              className="inline-flex items-center justify-center gap-1.5 px-6 py-3 sm:px-7 sm:py-3.5 rounded-full bg-[#111318] text-white text-[14px] sm:text-[15px] font-semibold hover:bg-[#232730] shadow-md hover:shadow-lg transition-all duration-200"
+              href="#contact"
+            >
+              <span>Contact Me</span>
+              <span className="text-xs">↗</span>
+            </a>
+            <a
+              className="inline-flex items-center justify-center px-5 py-3 sm:px-6 sm:py-3.5 rounded-full bg-white hover:bg-[#F5F3EF] text-[#111318] text-[14px] sm:text-[15px] font-semibold border border-[#E2DFD8] shadow-xs transition-all duration-200"
+              href="#education"
+              onClick={onViewCV}
+            >
+              <span>Explore Credentials</span>
+            </a>
+          </div>
+
+          {/* Micro Pill Highlights: Clean Typography Without Clutter Icons */}
+          <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 pt-1 text-[12px] sm:text-[13px] text-[#5A606D]">
+            <span className="px-3 py-1 rounded-full bg-white border border-[#EAE6DF] shadow-xs font-medium">
+              MS Office Certified
+            </span>
+            <span className="px-3 py-1 rounded-full bg-white border border-[#EAE6DF] shadow-xs font-medium">
+              Canva &amp; Photoshop
+            </span>
+            <span className="px-3 py-1 rounded-full bg-white border border-[#EAE6DF] shadow-xs font-medium">
+              Prompt &amp; AI Tools
+            </span>
+            <span className="px-3 py-1 rounded-full bg-white border border-[#EAE6DF] shadow-xs font-medium">
+              Rawalpindi, PK
+            </span>
+          </div>
+
+          {/* Direct Contact Quick Chips */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-2.5 pt-1 w-full max-w-md mx-auto">
+            <a
+              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-full bg-[#F5F3EF] hover:bg-[#EAE6DF] text-[#111318] text-[12px] sm:text-[13px] font-medium transition-colors"
+              href="tel:03129547572"
+            >
+              <span className="font-mono text-[#717684] text-[11px] mr-1.5">Tel:</span>
+              <span className="font-mono font-semibold">03129547572</span>
+            </a>
+            <a
+              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-full bg-[#F5F3EF] hover:bg-[#EAE6DF] text-[#111318] text-[12px] sm:text-[13px] font-medium transition-colors truncate"
+              href="mailto:munazza.00077@gmail.com"
+            >
+              <span className="font-mono text-[#717684] text-[11px] mr-1.5">Email:</span>
+              <span className="font-mono font-semibold truncate">munazza.00077@gmail.com</span>
+            </a>
+          </div>
+
+          {/* =========================================================================
+              INTERACTIVE CATEGORY SHOWCASE BAR (Visible on Mobile & Desktop)
+             ========================================================================= */}
+          <div className="w-full max-w-4xl mx-auto mt-8 sm:mt-10 pt-2 border-t border-[#E8E5DF]/70">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#FF6900]" />
+                <span className="font-mono text-[11px] sm:text-[12px] uppercase tracking-wider text-[#717684] font-semibold">
+                  Core Production Disciplines
                 </span>
-              </React.Fragment>
-            ))}
+              </div>
+              <a
+                href="#projects"
+                className="text-[12px] sm:text-[13px] text-[#FF6900] hover:text-[#E05600] font-medium inline-flex items-center gap-1 group transition-colors"
+              >
+                <span>View Full Archive</span>
+                <span className="group-hover:translate-x-0.5 transition-transform">↗</span>
+              </a>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3.5">
+              {/* Category 1: Graphic Design */}
+              <a
+                href="#projects"
+                className="group flex flex-col p-2 sm:p-2.5 rounded-2xl bg-white border border-[#E8E5DF] hover:border-[#FF6900]/50 hover:shadow-md transition-all duration-300 text-left overflow-hidden relative"
+              >
+                <div className="relative w-full aspect-16/10 rounded-xl overflow-hidden bg-[#FAF8F5] mb-2">
+                  <img
+                    src="/assets/aistudio/Logo_12077448.jpg"
+                    alt="Graphic Design"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                  <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full bg-[#111318]/90 text-white text-[10px] font-semibold backdrop-blur-xs font-mono">
+                    Design
+                  </span>
+                </div>
+                <span className="font-bold text-[13px] sm:text-[14px] text-[#111318] group-hover:text-[#FF6900] transition-colors leading-snug">
+                  Graphic Design
+                </span>
+                <span className="text-[11px] text-[#5A606D] truncate mt-0.5">
+                  Logos, Monograms &amp; Kits
+                </span>
+              </a>
+
+              {/* Category 2: Video Editing */}
+              <a
+                href="#reels"
+                className="group flex flex-col p-2 sm:p-2.5 rounded-2xl bg-white border border-[#E8E5DF] hover:border-[#FF6900]/50 hover:shadow-md transition-all duration-300 text-left overflow-hidden relative"
+              >
+                <div className="relative w-full aspect-16/10 rounded-xl overflow-hidden bg-[#111318] mb-2">
+                  <video
+                    src="/assets/aistudio/1_Kanal_Residential_Plot___Housing_Development_bea26688.mp4"
+                    muted
+                    autoPlay
+                    loop
+                    playsInline
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90"
+                  />
+                  <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full bg-[#FF6900] text-white text-[10px] font-semibold font-mono">
+                    6 Reels
+                  </span>
+                </div>
+                <span className="font-bold text-[13px] sm:text-[14px] text-[#111318] group-hover:text-[#FF6900] transition-colors leading-snug">
+                  Video Editing
+                </span>
+                <span className="text-[11px] text-[#5A606D] truncate mt-0.5">
+                  9:16 Drone &amp; Kinetic Reels
+                </span>
+              </a>
+
+              {/* Category 3: Posters & Flyers */}
+              <a
+                href="#projects"
+                className="group flex flex-col p-2 sm:p-2.5 rounded-2xl bg-white border border-[#E8E5DF] hover:border-[#FF6900]/50 hover:shadow-md transition-all duration-300 text-left overflow-hidden relative"
+              >
+                <div className="relative w-full aspect-16/10 rounded-xl overflow-hidden bg-[#FAF8F5] mb-2">
+                  <img
+                    src="/assets/aistudio/Flyer_9744df9f.png"
+                    alt="Posters & Flyers"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                  <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full bg-[#111318]/90 text-white text-[10px] font-semibold backdrop-blur-xs font-mono">
+                    Print
+                  </span>
+                </div>
+                <span className="font-bold text-[13px] sm:text-[14px] text-[#111318] group-hover:text-[#FF6900] transition-colors leading-snug">
+                  Posters &amp; Flyers
+                </span>
+                <span className="text-[11px] text-[#5A606D] truncate mt-0.5">
+                  Tri-Folds &amp; Social Ads
+                </span>
+              </a>
+
+              {/* Category 4: MS Office & IT */}
+              <a
+                href="#skills"
+                className="group flex flex-col p-2 sm:p-2.5 rounded-2xl bg-white border border-[#E8E5DF] hover:border-[#FF6900]/50 hover:shadow-md transition-all duration-300 text-left overflow-hidden relative"
+              >
+                <div className="relative w-full aspect-16/10 rounded-xl overflow-hidden bg-[#FAF8F5] mb-2">
+                  <img
+                    src="/assets/aistudio/Website_Banner_53c790d7.png"
+                    alt="MS Office & IT Operations"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                  <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full bg-[#10B981] text-white text-[10px] font-semibold font-mono">
+                    Office
+                  </span>
+                </div>
+                <span className="font-bold text-[13px] sm:text-[14px] text-[#111318] group-hover:text-[#FF6900] transition-colors leading-snug">
+                  MS Office &amp; IT
+                </span>
+                <span className="text-[11px] text-[#5A606D] truncate mt-0.5">
+                  Word, Excel &amp; Systems
+                </span>
+              </a>
+            </div>
           </div>
         </div>
+
+        {/* =========================================================================
+            4 PROFESSIONAL STATISTICS CARDS: Clean Editorial Numbering
+           ========================================================================= */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mt-10 sm:mt-12">
+          <div className="flex flex-col p-4 sm:p-6 rounded-2xl bg-white border border-[#E8E5DF] shadow-[0_4px_16px_rgba(0,0,0,0.03)] hover:border-[#FF6900]/40 transition-all duration-200">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <span className="font-mono text-[10px] sm:text-[11px] uppercase tracking-wider text-[#717684]">
+                IT Training
+              </span>
+              <span className="font-mono text-[11px] text-[#FF6900] font-bold">01</span>
+            </div>
+            <span className="text-[28px] sm:text-[38px] font-extrabold text-[#111318] leading-none">
+              6 Mo
+            </span>
+            <span className="text-[11px] sm:text-[13px] text-[#5A606D] mt-1.5 sm:mt-2">
+              Comprehensive Practical Course
+            </span>
+          </div>
+
+          <div className="flex flex-col p-4 sm:p-6 rounded-2xl bg-white border border-[#E8E5DF] shadow-[0_4px_16px_rgba(0,0,0,0.03)] hover:border-[#FF6900]/40 transition-all duration-200">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <span className="font-mono text-[10px] sm:text-[11px] uppercase tracking-wider text-[#717684]">
+                Skill Areas
+              </span>
+              <span className="font-mono text-[11px] text-[#FF6900] font-bold">02</span>
+            </div>
+            <span className="text-[28px] sm:text-[38px] font-extrabold text-[#FF6900] leading-none">
+              {totalSkillsCount}+
+            </span>
+            <span className="text-[11px] sm:text-[13px] text-[#5A606D] mt-1.5 sm:mt-2">
+              Office, Design, IT &amp; Media
+            </span>
+          </div>
+
+          <div className="flex flex-col p-4 sm:p-6 rounded-2xl bg-white border border-[#E8E5DF] shadow-[0_4px_16px_rgba(0,0,0,0.03)] hover:border-[#FF6900]/40 transition-all duration-200">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <span className="font-mono text-[10px] sm:text-[11px] uppercase tracking-wider text-[#717684]">
+                Academics
+              </span>
+              <span className="font-mono text-[11px] text-[#FF6900] font-bold">03</span>
+            </div>
+            <span className="text-[28px] sm:text-[38px] font-extrabold text-[#111318] leading-none">
+              3rd
+            </span>
+            <span className="text-[11px] sm:text-[13px] text-[#5A606D] mt-1.5 sm:mt-2">
+              Semester BS English Honors
+            </span>
+          </div>
+
+          <div className="flex flex-col p-4 sm:p-6 rounded-2xl bg-white border border-[#E8E5DF] shadow-[0_4px_16px_rgba(0,0,0,0.03)] hover:border-[#FF6900]/40 transition-all duration-200">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <span className="font-mono text-[10px] sm:text-[11px] uppercase tracking-wider text-[#717684]">
+                Languages
+              </span>
+              <span className="font-mono text-[11px] text-[#FF6900] font-bold">04</span>
+            </div>
+            <span className="text-[28px] sm:text-[38px] font-extrabold text-[#111318] leading-none">
+              02
+            </span>
+            <span className="text-[11px] sm:text-[13px] text-[#5A606D] mt-1.5 sm:mt-2">
+              Urdu (Native) • English (Fluent)
+            </span>
+          </div>
+        </div>
+
       </div>
     </section>
   );

@@ -1,20 +1,20 @@
 import React, { useState } from 'react';
-import { Mail, Phone, MapPin, Send, MessageCircle, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { Mail, Phone, MapPin, Send, CheckCircle2, Clock } from 'lucide-react';
 import { validateInquiryForm } from '../utils/portfolio-logic';
 
 interface ContactSectionProps {
   onSubmitInquiry: (data: any) => Promise<boolean>;
-  onOpenAdmin: () => void;
+  onOpenAdmin?: () => void;
 }
 
-export const ContactSection: React.FC<ContactSectionProps> = ({ onSubmitInquiry, onOpenAdmin }) => {
+export const ContactSection: React.FC<ContactSectionProps> = ({ onSubmitInquiry }) => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
-    service: 'Full-Time Hiring (Graphic Designer / Video Editor)',
-    budget: 'Standard Market Rate',
-    timeline: 'Immediate / Full-Time',
+    service: 'Office Assistant / Graphic Design Project',
+    budget: 'Standard',
+    timeline: 'Immediate',
     message: '',
   });
 
@@ -22,7 +22,9 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ onSubmitInquiry,
   const [submitted, setSubmitted] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setErrorMessage('');
   };
@@ -32,7 +34,7 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ onSubmitInquiry,
 
     const validation = validateInquiryForm(formData);
     if (!validation.valid) {
-      setErrorMessage(validation.errors[0].message);
+      setErrorMessage(validation.errors[0]?.message || 'Please check form fields');
       return;
     }
 
@@ -47,9 +49,9 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ onSubmitInquiry,
           name: '',
           email: '',
           phone: '',
-          service: 'Full-Time Hiring (Graphic Designer / Video Editor)',
-          budget: 'Standard Market Rate',
-          timeline: 'Immediate / Full-Time',
+          service: 'Office Assistant / Graphic Design Project',
+          budget: 'Standard',
+          timeline: 'Immediate',
           message: '',
         });
       } else {
@@ -63,260 +65,200 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ onSubmitInquiry,
   };
 
   return (
-    <section
-      id="contact"
-      className="py-20 lg:py-24 border-t border-[rgba(215,208,198,0.5)] bg-[#FAF8F5]"
-    >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
-          {/* Left Column: Direct Contact Credentials */}
-          <div className="lg:col-span-5">
-            <span className="block text-[11px] font-medium uppercase tracking-[0.2em] text-[#A88659]">
-              05 · Consultation &amp; Hiring
+    <section className="relative z-10 w-full py-16 lg:py-24 bg-[#FAF8F5]" id="contact">
+      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-12">
+        {/* Section Header */}
+        <div className="flex flex-col gap-2 mb-12 text-center items-center">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-[#E8E5DF]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#FF6900]" />
+            <span className="font-mono text-[11px] uppercase tracking-widest text-[#FF6900] font-bold">
+              Get In Touch
             </span>
-            <h2 className="mt-2.5 font-serif text-3xl sm:text-5xl font-medium tracking-[-0.02em] text-[#181716] leading-[1.08]">
-              Ready to <em className="italic font-normal text-[#C47D68]">Collaborate</em> or Hire?
-            </h2>
-            <p className="mt-4 text-sm sm:text-[15px] text-[#575049] leading-[1.7] tracking-[0.02em]">
-              Available for full-time studio or corporate placement as well as bespoke freelance brand identity and reel commissions.
-            </p>
+          </div>
+          <h2 className="text-[34px] sm:text-[44px] font-extrabold text-[#111318] tracking-tight">
+            Let's Work Together
+          </h2>
+          <p className="text-[16px] text-[#5A606D] max-w-xl">
+            Looking for a dedicated individual with IT, office, and creative skills? Let's connect and discuss opportunities.
+          </p>
+        </div>
 
-            {/* Clean Hairline Contact Rows */}
-            <div className="mt-8 divide-y divide-[rgba(215,208,198,0.6)] border-t border-b border-[rgba(215,208,198,0.6)]">
-              <div className="py-4 flex items-start gap-3.5">
-                <Phone className="h-4 w-4 text-[#C47D68] shrink-0 mt-1" />
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.12em] text-[#7A7067]">Call / WhatsApp</div>
-                  <a
-                    href="tel:03129547572"
-                    className="mt-0.5 block text-sm font-medium text-[#181716] hover:text-[#C47D68] transition-colors tabular-nums"
-                  >
-                    03129547572
-                  </a>
-                  <span className="text-xs text-[#6E655D]">Alternative: +92-3126292672</span>
-                </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Left: Direct Contact Information Cards */}
+          <div className="lg:col-span-5 flex flex-col gap-4">
+            <a
+              className="flex items-center gap-4 p-5 rounded-2xl bg-white border border-[#E8E5DF] hover:border-[#FF6900]/40 transition-all duration-150 group shadow-xs"
+              href="tel:03129547572"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-[#FFF2E5] flex items-center justify-center text-[#FF6900] group-hover:scale-110 transition-transform duration-150 shrink-0">
+                <Phone className="w-5 h-5" />
               </div>
-
-              <div className="py-4 flex items-start gap-3.5">
-                <Mail className="h-4 w-4 text-[#C47D68] shrink-0 mt-1" />
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.12em] text-[#7A7067]">Direct Email</div>
-                  <a
-                    href="mailto:munazza.00077@gmail.com"
-                    className="mt-0.5 block text-sm font-medium text-[#181716] hover:text-[#C47D68] transition-colors"
-                  >
-                    munazza.00077@gmail.com
-                  </a>
-                </div>
+              <div className="flex flex-col min-w-0">
+                <span className="font-mono text-[11px] text-[#717684] uppercase tracking-wider">
+                  Direct Phone / WhatsApp
+                </span>
+                <span className="text-[17px] font-bold text-[#111318] group-hover:text-[#FF6900] transition-colors">
+                  03129547572
+                </span>
+                <span className="text-[12px] text-[#5A606D]">Click to initiate direct call</span>
               </div>
+            </a>
 
-              <div className="py-4 flex items-start gap-3.5">
-                <MapPin className="h-4 w-4 text-[#C47D68] shrink-0 mt-1" />
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.12em] text-[#7A7067]">Studio Location</div>
-                  <span className="mt-0.5 block text-sm font-medium text-[#181716]">
-                    Rawalpindi, Punjab, Pakistan
-                  </span>
-                  <span className="text-xs text-[#6E655D]">Open to On-site Office &amp; Remote Roles</span>
-                </div>
+            <a
+              className="flex items-center gap-4 p-5 rounded-2xl bg-white border border-[#E8E5DF] hover:border-[#FF6900]/40 transition-all duration-150 group shadow-xs"
+              href="mailto:munazza.00077@gmail.com"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-[#FFF2E5] flex items-center justify-center text-[#FF6900] group-hover:scale-110 transition-transform duration-150 shrink-0">
+                <Mail className="w-5 h-5" />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="font-mono text-[11px] text-[#717684] uppercase tracking-wider">
+                  Official Email
+                </span>
+                <span className="text-[16px] font-bold text-[#111318] group-hover:text-[#FF6900] transition-colors truncate">
+                  munazza.00077@gmail.com
+                </span>
+                <span className="text-[12px] text-[#5A606D]">Click to compose email</span>
+              </div>
+            </a>
+
+            <div className="flex items-center gap-4 p-5 rounded-2xl bg-white border border-[#E8E5DF] shadow-xs">
+              <div className="w-12 h-12 rounded-2xl bg-[#F5F3EF] flex items-center justify-center text-[#111318] shrink-0">
+                <MapPin className="w-5 h-5" />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-mono text-[11px] text-[#717684] uppercase tracking-wider">
+                  Location
+                </span>
+                <span className="text-[17px] font-bold text-[#111318]">Rawalpindi, Pakistan</span>
+                <span className="text-[12px] text-[#5A606D]">
+                  Available locally and for remote positions
+                </span>
               </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="mt-7 flex flex-wrap items-center gap-3">
-              <a
-                href="https://wa.me/923129547572?text=Hello%20Munazza,%20I%20reviewed%20your%20portfolio%20and%20would%20like%20to%20discuss%20a%20job%20opportunity."
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-full bg-[#181716] px-6 py-3 text-xs font-medium tracking-[0.03em] text-[#FAF8F5] hover:bg-[#C47D68] transition-colors shadow-sm"
-              >
-                <MessageCircle className="h-3.5 w-3.5 text-[#C5A880]" />
-                <span>Chat on WhatsApp</span>
-              </a>
-
-              <button
-                type="button"
-                onClick={onOpenAdmin}
-                className="inline-flex items-center gap-2 rounded-full border border-[#181716]/25 bg-white px-5 py-3 text-xs font-medium text-[#181716] hover:border-[#181716] transition-colors"
-              >
-                <ShieldCheck className="h-3.5 w-3.5 text-[#A88659]" />
-                <span>Admin &amp; Inquiries Portal</span>
-              </button>
+            <div className="p-4 rounded-2xl bg-white border border-[#E8E5DF] flex items-center gap-3 shadow-xs">
+              <Clock className="w-5 h-5 text-[#10B981] shrink-0" />
+              <span className="font-mono text-[12px] text-[#111318] font-medium">
+                Fast response: typically within 24 hours
+              </span>
             </div>
           </div>
 
-          {/* Right Column: Editorial Inquiry Sheet */}
-          <div className="lg:col-span-7 rounded-2xl border border-[rgba(215,208,198,0.75)] bg-white p-7 sm:p-9 shadow-[0_24px_56px_-24px_rgba(24,23,22,0.12)]">
-            <h3 className="font-serif text-2xl sm:text-3xl font-medium text-[#181716]">
-              Send an Inquiry or Job Proposal
-            </h3>
-            <p className="mt-1.5 text-xs text-[#6E655D] mb-6 leading-relaxed">
-              Every submission is logged directly into the studio’s Cloud Firestore inbox.
-            </p>
-
+          {/* Right: Contact Form Card */}
+          <div className="lg:col-span-7 p-7 sm:p-10 rounded-[28px] bg-white border border-[#E8E5DF] shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
             {submitted ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-8 text-center">
-                <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-700 mb-3" />
-                <h4 className="font-serif text-xl font-medium text-[#181716]">
-                  Inquiry Logged Successfully
-                </h4>
-                <p className="mt-2 text-xs text-[#575049] max-w-md mx-auto leading-relaxed">
-                  Thank you! Your proposal has been saved to Cloud Firestore and Munazza will respond shortly.
-                </p>
-                <div className="mt-6 flex flex-wrap justify-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setSubmitted(false)}
-                    className="rounded-full border border-[rgba(215,208,198,0.85)] bg-white px-5 py-2.5 text-xs font-medium text-[#181716] hover:border-[#181716] transition-colors"
-                  >
-                    Send Another Inquiry
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onOpenAdmin}
-                    className="rounded-full bg-[#181716] px-5 py-2.5 text-xs font-medium text-[#FAF8F5] hover:bg-[#C47D68] transition-colors"
-                  >
-                    Open Admin Portal
-                  </button>
+              <div className="py-12 text-center flex flex-col items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-[#ECFDF5] text-[#10B981] flex items-center justify-center">
+                  <CheckCircle2 className="w-6 h-6" />
                 </div>
+                <h3 className="text-xl font-bold text-[#111318]">Message Sent Successfully!</h3>
+                <p className="text-sm text-[#5A606D] max-w-md">
+                  Thank you for reaching out. Munazza Irfan has received your inquiry and will review it promptly.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSubmitted(false)}
+                  className="mt-4 px-6 py-2.5 rounded-full bg-[#111318] text-white text-xs font-semibold hover:bg-[#232730]"
+                >
+                  Send Another Message
+                </button>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
                 {errorMessage && (
-                  <div className="rounded-xl border border-[#C47D68]/50 bg-[#C47D68]/10 p-3 text-xs text-[#8A4634] font-medium">
+                  <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
                     {errorMessage}
                   </div>
                 )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-[#181716] mb-1.5">
-                      Your Full Name <span className="text-[#C47D68]">*</span>
+                  <div className="flex flex-col gap-1.5">
+                    <label
+                      className="font-mono text-[11px] font-bold text-[#5A606D] uppercase"
+                      htmlFor="fullName"
+                    >
+                      Full Name <span className="text-[#FF6900]">*</span>
                     </label>
                     <input
-                      type="text"
+                      id="fullName"
                       name="name"
+                      type="text"
                       required
+                      placeholder="e.g. Ayesha Khan"
                       value={formData.name}
                       onChange={handleChange}
-                      placeholder="e.g. Asad Qureshi"
-                      className="w-full rounded-xl border border-[rgba(215,208,198,0.85)] bg-[#FAF8F5] px-3.5 py-2.5 text-xs text-[#181716] placeholder-[#8E847A] focus:border-[#181716] focus:outline-none"
+                      className="w-full px-4 py-3 rounded-xl bg-[#FAF8F5] border border-[#DDD7CD] text-[#111318] placeholder:text-[#8A8F9D] text-[14px] focus:bg-white focus:border-[#FF6900] focus:ring-1 focus:ring-[#FF6900] focus:outline-none transition-colors"
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-[#181716] mb-1.5">
-                      Email Address <span className="text-[#C47D68]">*</span>
+                  <div className="flex flex-col gap-1.5">
+                    <label
+                      className="font-mono text-[11px] font-bold text-[#5A606D] uppercase"
+                      htmlFor="emailAddress"
+                    >
+                      Email Address <span className="text-[#FF6900]">*</span>
                     </label>
                     <input
-                      type="email"
+                      id="emailAddress"
                       name="email"
+                      type="email"
                       required
+                      placeholder="name@company.com"
                       value={formData.email}
                       onChange={handleChange}
-                      placeholder="name@company.com"
-                      className="w-full rounded-xl border border-[rgba(215,208,198,0.85)] bg-[#FAF8F5] px-3.5 py-2.5 text-xs text-[#181716] placeholder-[#8E847A] focus:border-[#181716] focus:outline-none"
+                      className="w-full px-4 py-3 rounded-xl bg-[#FAF8F5] border border-[#DDD7CD] text-[#111318] placeholder:text-[#8A8F9D] text-[14px] focus:bg-white focus:border-[#FF6900] focus:ring-1 focus:ring-[#FF6900] focus:outline-none transition-colors"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-[#181716] mb-1.5">
-                      Phone / WhatsApp (Optional)
-                    </label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleChange}
-                      placeholder="+92 300 1234567"
-                      className="w-full rounded-xl border border-[rgba(215,208,198,0.85)] bg-[#FAF8F5] px-3.5 py-2.5 text-xs text-[#181716] placeholder-[#8E847A] focus:border-[#181716] focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-[#181716] mb-1.5">
-                      Service / Role Needed <span className="text-[#C47D68]">*</span>
-                    </label>
-                    <select
-                      name="service"
-                      value={formData.service}
-                      onChange={handleChange}
-                      className="w-full rounded-xl border border-[rgba(215,208,198,0.85)] bg-[#FAF8F5] px-3.5 py-2.5 text-xs text-[#181716] focus:border-[#181716] focus:outline-none"
-                    >
-                      <option value="Full-Time Hiring (Graphic Designer / Video Editor)">Full-Time Employment (Graphic Designer / Video Editor)</option>
-                      <option value="Graphic Design (Social Media, Flyers, Logos)">Graphic Design (Social Media, Flyers, Logos)</option>
-                      <option value="Video Editing (Reels, Montages, Subtitles)">Video Editing (Reels, Montages, Subtitles)</option>
-                      <option value="Computer Operator / MS Office Specialist">Computer Operator / MS Office Specialist</option>
-                      <option value="Office Assistant / IT Support">Office Assistant / IT Support</option>
-                      <option value="Custom Freelance Project">Custom Freelance Project</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-[#181716] mb-1.5">
-                      Timeline / Availability
-                    </label>
-                    <select
-                      name="timeline"
-                      value={formData.timeline}
-                      onChange={handleChange}
-                      className="w-full rounded-xl border border-[rgba(215,208,198,0.85)] bg-[#FAF8F5] px-3.5 py-2.5 text-xs text-[#181716] focus:border-[#181716] focus:outline-none"
-                    >
-                      <option value="Immediate / Full-Time">Immediate / Full-Time</option>
-                      <option value="Within 1–2 Weeks">Within 1–2 Weeks</option>
-                      <option value="Flexible / Ongoing">Flexible / Ongoing</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-[#181716] mb-1.5">
-                      Expected Budget / Salary Offer
-                    </label>
-                    <input
-                      type="text"
-                      name="budget"
-                      value={formData.budget}
-                      onChange={handleChange}
-                      placeholder="e.g. Monthly Salary or Project Budget"
-                      className="w-full rounded-xl border border-[rgba(215,208,198,0.85)] bg-[#FAF8F5] px-3.5 py-2.5 text-xs text-[#181716] placeholder-[#8E847A] focus:border-[#181716] focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-[#181716] mb-1.5">
-                    Position or Project Description <span className="text-[#C47D68]">*</span>
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    className="font-mono text-[11px] font-bold text-[#5A606D] uppercase"
+                    htmlFor="subject"
+                  >
+                    Subject / Opportunity Type <span className="text-[#FF6900]">*</span>
                   </label>
-                  <textarea
-                    name="message"
-                    rows={4}
+                  <input
+                    id="subject"
+                    name="service"
+                    type="text"
                     required
-                    value={formData.message}
+                    placeholder="Office Assistant / Graphic Design Project / Inquiry"
+                    value={formData.service}
                     onChange={handleChange}
-                    placeholder="Describe your requirements (e.g. daily video reels, brand identity, office document preparation, or full-time office details)..."
-                    className="w-full rounded-xl border border-[rgba(215,208,198,0.85)] bg-[#FAF8F5] px-3.5 py-2.5 text-xs text-[#181716] placeholder-[#8E847A] focus:border-[#181716] focus:outline-none leading-relaxed"
+                    className="w-full px-4 py-3 rounded-xl bg-[#FAF8F5] border border-[#DDD7CD] text-[#111318] placeholder:text-[#8A8F9D] text-[14px] focus:bg-white focus:border-[#FF6900] focus:ring-1 focus:ring-[#FF6900] focus:outline-none transition-colors"
                   />
                 </div>
 
-                <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5 text-[11px] text-[#7A7067]">
-                    <ShieldCheck className="h-3.5 w-3.5 text-[#A88659]" />
-                    <span>Persisted securely in Cloud Firestore</span>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="inline-flex items-center gap-2 rounded-full bg-[#181716] px-7 py-3 text-xs font-medium tracking-[0.04em] text-[#FAF8F5] hover:bg-[#C47D68] disabled:opacity-50 transition-colors shadow-sm"
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    className="font-mono text-[11px] font-bold text-[#5A606D] uppercase"
+                    htmlFor="message"
                   >
-                    <Send className="h-3.5 w-3.5 text-[#C5A880]" />
-                    <span>{loading ? 'Submitting...' : 'Send Inquiry'}</span>
-                  </button>
+                    Message <span className="text-[#FF6900]">*</span>
+                  </label>
+                  <textarea
+                    id="message"
+                    name="message"
+                    required
+                    rows={4}
+                    placeholder="Describe your requirements or job details..."
+                    value={formData.message}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 rounded-xl bg-[#FAF8F5] border border-[#DDD7CD] text-[#111318] placeholder:text-[#8A8F9D] text-[14px] focus:bg-white focus:border-[#FF6900] focus:ring-1 focus:ring-[#FF6900] focus:outline-none transition-colors resize-y"
+                  />
                 </div>
+
+                {/* Black Pill Submit Button matching Stitch CTA */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-[#111318] text-white font-bold text-[15px] hover:bg-[#232730] shadow-md hover:shadow-lg transition-all duration-200 mt-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Send className="w-4 h-4 text-[#FF6900]" />
+                  <span>{loading ? 'Sending Message...' : 'Send Message'}</span>
+                </button>
               </form>
             )}
           </div>

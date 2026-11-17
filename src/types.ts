@@ -29,6 +29,23 @@ export interface SkillItem {
   created_at?: string;
 }
 
+export interface ExpertiseItem {
+  id: string | number;
+  num?: string;
+  title: string;
+  category: 'office' | 'design' | 'video' | 'it' | 'research' | 'collaboration' | 'ai';
+  icon?: string;
+  summary: string;
+  details?: string;
+  tags: string[];
+  tools?: string[];
+  coursework?: string;
+  deliverables?: string[];
+  sort_order?: number;
+  created_at?: string;
+}
+
+
 export interface ProjectComment {
   id: string | number;
   project_id?: string | number;
